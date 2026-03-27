@@ -23,6 +23,7 @@ public class DepenseService {
     private final CategorieRepository categorieRepository;
     private final AiCategorizationService aiCategorizationService;
     private final UserService userService;
+    private final DefiService defiService;
 
     public List<Depense> getDepensesByUser(User user, LocalDateTime start, LocalDateTime end, Long categoryId) {
         return depenseRepository.findByUser(user).stream()
@@ -44,6 +45,12 @@ public class DepenseService {
         resolveOrCreateCategorie(depense, user);
         Depense savedDepense = depenseRepository.save(depense);
         userService.updateSolde(user.getId(), depense.getMontant().negate());
+        
+        // --- DEFI CHECK ---
+        if (depense.getCategorie() != null) {
+            defiService.checkViolation(user, depense.getCategorie().getNom());
+        }
+        
         return savedDepense;
     }
 
@@ -57,6 +64,7 @@ public class DepenseService {
 
         depense.setMontant(newMontant);
         depense.setDescription(depenseDetails.getDescription());
+        // Removed: depense.setProjets(depenseDetails.getProjets()); // ✅ Update projets
         if (depenseDetails.getDate() != null) {
             depense.setDate(depenseDetails.getDate());
         }
@@ -119,5 +127,25 @@ public class DepenseService {
             stats.put(catName, stats.getOrDefault(catName, BigDecimal.ZERO).add(d.getMontant()));
         }
         return stats;
+    }
+
+    public BigDecimal getTotalDepensesForMonth(User user, int month, int year) {
+        LocalDateTime start = LocalDateTime.of(year, month, 1, 0, 0);
+        LocalDateTime end = start.plusMonths(1).minusNanos(1);
+        return depenseRepository.findByUserAndDateBetween(user, start, end).stream()
+                .map(Depense::getMontant)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public BigDecimal getAverageMonthlyExpenses(User user, int months) {
+        LocalDateTime start = LocalDateTime.now().minusMonths(months).withDayOfMonth(1).withHour(0).withMinute(0);
+        LocalDateTime end = LocalDateTime.now().withDayOfMonth(1).minusNanos(1);
+        List<Depense> depenses = depenseRepository.findByUserAndDateBetween(user, start, end);
+        if (depenses.isEmpty()) return BigDecimal.ZERO;
+        
+        BigDecimal total = depenses.stream()
+                .map(Depense::getMontant)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return total.divide(new BigDecimal(months), 2, java.math.RoundingMode.HALF_UP);
     }
 }

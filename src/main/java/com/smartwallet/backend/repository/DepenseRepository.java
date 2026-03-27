@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface DepenseRepository extends JpaRepository<Depense, Long> {
     List<Depense> findByUser(User user);
+    List<Depense> findByUserAndDateBetween(User user, java.time.LocalDateTime start, java.time.LocalDateTime end);
 }

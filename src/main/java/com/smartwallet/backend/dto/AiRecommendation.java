@@ -12,4 +12,6 @@ public class AiRecommendation {
     private String message;
     private String type; // info, warning, success
     private String category;
+    private boolean challenge;
+    private String challengeCategory; // The backend category name to watch (e.g., "Shopping")
 }
