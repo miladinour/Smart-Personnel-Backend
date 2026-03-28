@@ -16,4 +16,5 @@ public class Revenu extends Transaction {
     public void calculerTotal() {
         // Implementation logic
     }
+
 }

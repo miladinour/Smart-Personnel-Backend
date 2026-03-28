@@ -16,4 +16,5 @@ public class Depense extends Transaction {
     public void calculerTotal() {
         // Implementation logic
     }
+
 }

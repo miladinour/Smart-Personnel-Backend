@@ -13,6 +13,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/categories")
 @RequiredArgsConstructor
+@CrossOrigin("*")
 public class CategorieController {
 
     private final CategorieService categorieService;
@@ -20,7 +21,7 @@ public class CategorieController {
 
     @GetMapping
     public ResponseEntity<List<Categorie>> getAllCategories(
-            @RequestParam(name = "type", required = false) String type,
+            @RequestParam(required = false) String type,
             Authentication authentication) {
         User user = userService.findByEmail(authentication.getName());
         if (type != null) {

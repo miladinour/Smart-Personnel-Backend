@@ -106,7 +106,6 @@ public class BudgetService {
                 .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
         budgetRepository.delete(budget);
     }
-
     private BudgetDTO convertToDTO(Budget budget) {
         BudgetDTO dto = new BudgetDTO();
         dto.setId(budget.getId());

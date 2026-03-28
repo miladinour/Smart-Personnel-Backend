@@ -15,6 +15,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RevenuService {
 
+    private final UserService userService;
     private final RevenuRepository revenuRepository;
     private final CategorieRepository categorieRepository;
     private final AiCategorizationService aiCategorizationService;
@@ -36,7 +37,9 @@ public class RevenuService {
             revenu.setDate(LocalDateTime.now());
         }
         resolveOrCreateCategorie(revenu, user);
-        return revenuRepository.save(revenu);
+        Revenu savedRevenu = revenuRepository.save(revenu);
+        userService.updateSolde(user.getId(), revenu.getMontant());
+        return savedRevenu;
     }
 
     public Revenu updateRevenu(Long id, Revenu revenuDetails, User user) {
@@ -44,7 +47,10 @@ public class RevenuService {
                 .filter(r -> r.getUser().getId().equals(user.getId()))
                 .orElseThrow(() -> new RuntimeException("Revenu non trouvé ou non autorisé"));
 
-        revenu.setMontant(revenuDetails.getMontant());
+        java.math.BigDecimal oldMontant = revenu.getMontant();
+        java.math.BigDecimal newMontant = revenuDetails.getMontant();
+
+        revenu.setMontant(newMontant);
         revenu.setDescription(revenuDetails.getDescription());
         revenu.setRecurring(revenuDetails.isRecurring());
         if (revenuDetails.getDate() != null) {
@@ -54,7 +60,13 @@ public class RevenuService {
         revenu.setCategorie(revenuDetails.getCategorie());
         resolveOrCreateCategorie(revenu, user);
 
-        return revenuRepository.save(revenu);
+        Revenu updated = revenuRepository.save(revenu);
+        
+        // Update balance: subtract old amount and add new amount
+        // Result = new - old
+        userService.updateSolde(user.getId(), newMontant.subtract(oldMontant));
+
+        return updated;
     }
 
     private void resolveOrCreateCategorie(Revenu revenu, User user) {
@@ -82,12 +94,34 @@ public class RevenuService {
         Revenu revenu = revenuRepository.findById(id)
                 .filter(r -> r.getUser().getId().equals(user.getId()))
                 .orElseThrow(() -> new RuntimeException("Revenu non trouvé ou non autorisé"));
+        java.math.BigDecimal amount = revenu.getMontant();
         revenuRepository.delete(revenu);
+        userService.updateSolde(user.getId(), amount.negate());
     }
 
     public BigDecimal getTotalRevenus(User user) {
         return revenuRepository.findByUser(user).stream()
                 .map(Revenu::getMontant)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public BigDecimal getTotalRevenuForMonth(User user, int month, int year) {
+        LocalDateTime start = LocalDateTime.of(year, month, 1, 0, 0);
+        LocalDateTime end = start.plusMonths(1).minusNanos(1);
+        return revenuRepository.findByUserAndDateBetween(user, start, end).stream()
+                .map(Revenu::getMontant)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public BigDecimal getAverageMonthlyIncome(User user, int months) {
+        LocalDateTime start = LocalDateTime.now().minusMonths(months).withDayOfMonth(1).withHour(0).withMinute(0);
+        LocalDateTime end = LocalDateTime.now().withDayOfMonth(1).minusNanos(1);
+        List<Revenu> revenus = revenuRepository.findByUserAndDateBetween(user, start, end);
+        if (revenus.isEmpty()) return BigDecimal.ZERO;
+        
+        BigDecimal total = revenus.stream()
+                .map(Revenu::getMontant)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return total.divide(new BigDecimal(months), 2, java.math.RoundingMode.HALF_UP);
     }
 }

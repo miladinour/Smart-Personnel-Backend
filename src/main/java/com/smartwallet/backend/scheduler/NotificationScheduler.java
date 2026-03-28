@@ -31,7 +31,7 @@ public class NotificationScheduler {
     @Scheduled(cron = "0 0 20 * * *")
     // "0 0 20 * * *"
     public void sendInactivityReminder() {
-        logger.info("Executing Inactivity Reminder Job...");
+        log.info("Executing Inactivity Reminder Job...");
         List<User> users = userService.getAllUsers();
         LocalDateTime todayStart = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
 
@@ -48,10 +48,10 @@ public class NotificationScheduler {
     @Scheduled(cron = "0 0 8 * * *")
 
     public void checkExpiredObjectifs() {
-        logger.info("Executing Expired Objectifs Job...");
+        log.info("Executing Expired Objectifs Job...");
         LocalDate today = LocalDate.now();
         List<Objectif> expiredObjectifs = objectifRepository.findExpiredUnachieved(today);
-        logger.info("Found {} expired unachieved objectifs for {}", expiredObjectifs.size(), today);
+        log.info("Found {} expired unachieved objectifs for {}", expiredObjectifs.size(), today);
 
         for (Objectif objectif : expiredObjectifs) {
             User user = objectif.getUser();

@@ -17,6 +17,7 @@ import java.nio.file.StandardCopyOption;
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
+@CrossOrigin("*")
 public class UserController {
 
     private final UserService userService;
@@ -89,7 +90,6 @@ public class UserController {
                     .body(Map.of("message", "Erreur lors de l'upload: " + e.getMessage()));
         }
     }
-
     @PatchMapping("/{id}/fcm-token")
     public ResponseEntity<?> updateFcmToken(@PathVariable("id") Long id, @RequestBody Map<String, String> payload,
             Authentication authentication) {

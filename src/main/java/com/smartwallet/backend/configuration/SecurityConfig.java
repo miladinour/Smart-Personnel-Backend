@@ -69,13 +69,11 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // Password encoder
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    // AuthenticationProvider avec UserDetailsService
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
@@ -84,7 +82,6 @@ public class SecurityConfig {
         return provider;
     }
 
-    // AuthenticationManager
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();

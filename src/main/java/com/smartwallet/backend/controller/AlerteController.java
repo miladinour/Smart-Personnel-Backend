@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/alertes")
 @RequiredArgsConstructor
+@CrossOrigin("*")
 public class AlerteController {
 
     private final AlerteRepository alerteRepository;

@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@CrossOrigin("*")
 public class AuthController {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -30,6 +31,7 @@ public class AuthController {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(authRequest.getEmail(), authRequest.getMotDePasse()));
 
+
         String token = jwtService.generateToken(authRequest.getEmail());
         User user = userService.findByEmail(authRequest.getEmail());
         return ResponseEntity.ok(new AuthResponse(token, user.getId(), user.getEmail()));
@@ -40,6 +42,41 @@ public class AuthController {
         User savedUser = userService.register(user);
         String token = jwtService.generateToken(savedUser.getEmail());
         return ResponseEntity.ok(new AuthResponse(token, savedUser.getId(), savedUser.getEmail()));
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<AuthResponse> googleLogin(@RequestBody com.smartwallet.backend.dto.GoogleLoginRequest request) throws Exception {
+        User user;
+        try {
+            user = userService.findByEmail(request.getEmail());
+        } catch (org.springframework.security.core.userdetails.UsernameNotFoundException ex) {
+            // Création automatique de l'utilisateur Google
+            user = new User();
+            user.setEmail(request.getEmail());
+            user.setMotDePasse(java.util.UUID.randomUUID().toString() + "G!1g"); // Mot de passe aléatoire jamais utilisé
+            
+            if (request.getDisplayName() != null) {
+                String[] parts = request.getDisplayName().split(" ", 2);
+                user.setPrenom(parts[0]);
+                if (parts.length > 1) {
+                    user.setNom(parts[1]);
+                } else {
+                    user.setNom("");
+                }
+            } else {
+                user.setPrenom("Utilisateur");
+                user.setNom("Google");
+            }
+            if (request.getPhotoUrl() != null) {
+                user.setPhotoProfil(request.getPhotoUrl());
+            }
+            
+            // Le prenom et nom ne peuvent pas etre null selon la base de donnees potentiel, on les gere plus haut
+            user = userService.register(user);
+        }
+
+        String token = jwtService.generateToken(user.getEmail());
+        return ResponseEntity.ok(new AuthResponse(token, user.getId(), user.getEmail()));
     }
 
     @PostMapping("/forgot-password")

@@ -14,6 +14,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/budgets")
 @RequiredArgsConstructor
+@CrossOrigin("*")
 public class BudgetController {
 
     private final BudgetService budgetService;
@@ -35,7 +36,7 @@ public class BudgetController {
         return ResponseEntity.ok(budgetService.getBudgetsByUser(user));
     }
 
-    @PostMapping
+        @PostMapping
     public ResponseEntity<BudgetDTO> createBudget(@RequestBody BudgetDTO budgetDTO, Authentication authentication) {
         User user = userService.findByEmail(authentication.getName());
         return ResponseEntity.ok(budgetService.createBudget(budgetDTO, user));

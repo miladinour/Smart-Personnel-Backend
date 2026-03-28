@@ -138,4 +138,10 @@ public class UserService implements UserDetailsService {
         user.setMotDePasse(passwordEncoder.encode(newPassword));
         userRepository.save(user);
     }
+    @Transactional
+    public void updateSolde(Long userId, java.math.BigDecimal amountChange) {
+        User user = findById(userId);
+        user.setSoldeTotal(user.getSoldeTotal().add(amountChange));
+        userRepository.save(user);
+    }
 }

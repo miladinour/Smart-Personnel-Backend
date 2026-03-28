@@ -5,10 +5,10 @@ import com.smartwallet.backend.model.Depense;
 import com.smartwallet.backend.model.Categorie;
 import com.smartwallet.backend.model.Budget;
 import com.smartwallet.backend.model.Alerte;
-import com.smartwallet.backend.repository.DepenseRepository;
-import com.smartwallet.backend.repository.CategorieRepository;
 import com.smartwallet.backend.repository.BudgetRepository;
 import com.smartwallet.backend.repository.AlerteRepository;
+import com.smartwallet.backend.repository.DepenseRepository;
+import com.smartwallet.backend.repository.CategorieRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,6 +30,8 @@ public class DepenseService {
     private final BudgetRepository budgetRepository;
     private final AlerteRepository alerteRepository;
     private final FirebaseService firebaseService;
+    private final UserService userService;
+    private final DefiService defiService;
 
     public List<Depense> getDepensesByUser(User user, LocalDateTime start, LocalDateTime end, Long categoryId) {
         return depenseRepository.findByUser(user).stream()
@@ -52,6 +54,12 @@ public class DepenseService {
         resolveOrCreateCategorie(depense, user);
         Depense savedDepense = depenseRepository.save(depense);
         checkBudgetAndAlert(savedDepense, user);
+        userService.updateSolde(user.getId(), depense.getMontant().negate());
+        
+        // --- DEFI CHECK ---
+        if (depense.getCategorie() != null) {
+            defiService.checkViolation(user, depense.getCategorie().getNom());
+        }
         return savedDepense;
     }
 
@@ -60,7 +68,10 @@ public class DepenseService {
                 .filter(d -> d.getUser().getId().equals(user.getId()))
                 .orElseThrow(() -> new RuntimeException("Dépense non trouvée ou non autorisée"));
 
-        depense.setMontant(depenseDetails.getMontant());
+        java.math.BigDecimal oldMontant = depense.getMontant();
+        java.math.BigDecimal newMontant = depenseDetails.getMontant();
+
+        depense.setMontant(newMontant);
         depense.setDescription(depenseDetails.getDescription());
         depense.setRecurring(depenseDetails.isRecurring());
         if (depenseDetails.getDate() != null) {
@@ -73,6 +84,10 @@ public class DepenseService {
 
         Depense updated = depenseRepository.save(depense);
         checkBudgetAndAlert(updated, user);
+        
+        // Update balance: add back old amount (it was negative) and subtract new amount
+        // Result = -(new - old) = old - new
+        userService.updateSolde(user.getId(), oldMontant.subtract(newMontant));
         return updated;
     }
 
@@ -149,12 +164,13 @@ public class DepenseService {
             firebaseService.sendPushNotification(user, "Alerte Budget", message);
         }
     }
-
     public void deleteDepense(Long id, User user) {
         Depense depense = depenseRepository.findById(id)
                 .filter(d -> d.getUser().getId().equals(user.getId()))
                 .orElseThrow(() -> new RuntimeException("Dépense non trouvée ou non autorisée"));
+        java.math.BigDecimal amount = depense.getMontant();
         depenseRepository.delete(depense);
+        userService.updateSolde(user.getId(), amount);
     }
 
     public BigDecimal getTotalDepenses(User user) {
@@ -167,9 +183,31 @@ public class DepenseService {
         List<Depense> depenses = depenseRepository.findByUser(user);
         Map<String, BigDecimal> stats = new HashMap<>();
         for (Depense d : depenses) {
-            String catName = d.getCategorie().getNom();
-            stats.put(catName, stats.getOrDefault(catName, BigDecimal.ZERO).add(d.getMontant()));
+            if (d.getCategorie() != null && d.getCategorie().getNom() != null) {
+                String catName = d.getCategorie().getNom();
+                stats.put(catName, stats.getOrDefault(catName, BigDecimal.ZERO).add(d.getMontant()));
+            }
         }
         return stats;
+    }
+
+    public BigDecimal getTotalDepensesForMonth(User user, int month, int year) {
+        LocalDateTime start = LocalDateTime.of(year, month, 1, 0, 0);
+        LocalDateTime end = start.plusMonths(1).minusNanos(1);
+        return depenseRepository.findByUserAndDateBetween(user, start, end).stream()
+                .map(Depense::getMontant)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public BigDecimal getAverageMonthlyExpenses(User user, int months) {
+        LocalDateTime start = LocalDateTime.now().minusMonths(months).withDayOfMonth(1).withHour(0).withMinute(0);
+        LocalDateTime end = LocalDateTime.now().withDayOfMonth(1).minusNanos(1);
+        List<Depense> depenses = depenseRepository.findByUserAndDateBetween(user, start, end);
+        if (depenses.isEmpty()) return BigDecimal.ZERO;
+        
+        BigDecimal total = depenses.stream()
+                .map(Depense::getMontant)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return total.divide(new BigDecimal(months), 2, java.math.RoundingMode.HALF_UP);
     }
 }

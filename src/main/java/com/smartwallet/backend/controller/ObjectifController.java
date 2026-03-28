@@ -14,6 +14,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/objectifs")
 @RequiredArgsConstructor
+@CrossOrigin("*")
 public class ObjectifController {
 
     private final ObjectifService objectifService;

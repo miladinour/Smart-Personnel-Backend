@@ -34,6 +34,7 @@ public class User extends Personne implements UserDetails {
     private String photoProfil;
     private String fcmToken;
 
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
     @JsonIgnore
     private List<Transaction> transactions;
