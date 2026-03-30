@@ -6,7 +6,7 @@ import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
-
+import java.time.LocalDate;
 @Entity
 @Getter
 @Setter
@@ -31,6 +31,11 @@ public class Dette {
 
     @Column(nullable = false)
     private Boolean isPaye = false;
+
+    @Column(nullable = false)
+    private Double montantPaye = 0.0;
+
+    private LocalDate dateLimite;
 
     @CreationTimestamp
     private LocalDateTime date;

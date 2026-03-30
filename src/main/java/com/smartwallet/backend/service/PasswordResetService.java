@@ -10,6 +10,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.beans.factory.annotation.Value;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +23,8 @@ public class PasswordResetService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
+    @Value("${app.server.url}")
+    private String serverUrl;
 
     @Transactional
     public void generatePasswordResetToken(String email) {
@@ -43,7 +46,7 @@ public class PasswordResetService {
             passwordResetTokenRepository.save(passwordResetToken);
 
             // Send email
-            String resetLink = "https://unlabored-pasty-brittlely.ngrok-free.dev/reset-password.html?token=" + token;
+            String resetLink = serverUrl + "/reset-password.html?token=" + token;
             String emailBody = "Vous avez demandé la réinitialisation de votre mot de passe.\n\n"
                     + "Veuillez cliquer sur le lien ci-dessous pour le réinitialiser :\n"
                     + resetLink + "\n\n"

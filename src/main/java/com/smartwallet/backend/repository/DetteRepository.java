@@ -11,6 +11,7 @@ import java.util.List;
 public interface DetteRepository extends JpaRepository<Dette, Long> {
     List<Dette> findByUserOrderByDateDesc(User user);
     List<Dette> findByUserAndIsPayeOrderByDateDesc(User user, boolean isPaye);
+    List<Dette> findByIsPayeFalseAndDateLimiteBefore(java.time.LocalDate date);
     
     @org.springframework.transaction.annotation.Transactional
     void deleteByUser(User user);

@@ -28,6 +28,13 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> authenticateAndGetToken(@RequestBody LoginRequest authRequest) {
+        // Auto-enable account if it exists but is disabled (bypass verification for Dev)
+        User userExist = userService.findByEmail(authRequest.getEmail());
+        if (userExist != null && !userExist.isEnabled()) {
+            userExist.setEnabled(true);
+            userService.updateUserStatus(userExist.getId(), true);
+        }
+
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(authRequest.getEmail(), authRequest.getMotDePasse()));
 
@@ -38,10 +45,35 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> registerUser(@RequestBody User user) throws Exception {
-        User savedUser = userService.register(user);
-        String token = jwtService.generateToken(savedUser.getEmail());
-        return ResponseEntity.ok(new AuthResponse(token, savedUser.getId(), savedUser.getEmail()));
+    public ResponseEntity<String> registerUser(@RequestBody User user) throws Exception {
+        userService.register(user);
+        return ResponseEntity.ok("Inscription réussie. Veuillez vérifier votre email pour activer votre compte.");
+    }
+
+    @org.springframework.beans.factory.annotation.Value("${app.frontend.url}")
+    private String frontendUrl;
+
+    @GetMapping("/verify")
+    public ResponseEntity<Void> verifyUser(@RequestParam String token) {
+        // Find user by verification token before clearing it
+        User user = userService.findByVerificationToken(token);
+        
+        // Verify the email (this clears the token and enables the user)
+        userService.verifyEmail(token);
+        
+        // Generate a fresh JWT token for auto-login in the app
+        String jwtToken = jwtService.generateToken(user.getEmail());
+        
+        // Redirect logic - For testing on Web, we redirect to the Flutter Web URL
+        // In a real app, you might use a landing page or deeper logic here
+        String redirectUri = String.format(
+            "%s/#/complete_profile?token=%s&id=%d&email=%s",
+            frontendUrl, jwtToken, user.getId(), user.getEmail()
+        );
+        
+        return ResponseEntity.status(org.springframework.http.HttpStatus.FOUND)
+                .location(java.net.URI.create(redirectUri))
+                .build();
     }
 
     @PostMapping("/google")

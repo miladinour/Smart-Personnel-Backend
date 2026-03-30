@@ -33,6 +33,8 @@ public class User extends Personne implements UserDetails {
 
     private String photoProfil;
     private String fcmToken;
+    private boolean enabled = false;
+    private String verificationToken;
 
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
@@ -94,6 +96,6 @@ public class User extends Personne implements UserDetails {
     @Override
     @JsonIgnore
     public boolean isEnabled() {
-        return true;
+        return enabled;
     }
 }

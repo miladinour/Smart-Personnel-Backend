@@ -3,6 +3,7 @@ package com.smartwallet.backend.service;
 import com.smartwallet.backend.model.User;
 import com.smartwallet.backend.repository.PasswordResetTokenRepository;
 import com.smartwallet.backend.repository.UserRepository;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -11,6 +12,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 import java.util.List;
 
 @Service
@@ -24,6 +26,12 @@ public class UserService implements UserDetailsService {
     @Autowired
     @Lazy
     private PasswordEncoder passwordEncoder;
+    
+    @Autowired
+    private EmailService emailService;
+
+    @Value("${app.server.url}")
+    private String serverUrl;
 
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
@@ -34,6 +42,7 @@ public class UserService implements UserDetailsService {
                 .username(user.getEmail())
                 .password(user.getPassword())
                 .authorities(user.getAuthorities())
+                .disabled(!user.isEnabled())
                 .build();
     }
 
@@ -57,10 +66,33 @@ public class UserService implements UserDetailsService {
             throw new Exception("Cet email est deja utilise.");
         }
         user.setMotDePasse(passwordEncoder.encode(user.getMotDePasse()));
+        user.setEnabled(true); // Enabled by default for easier development/testing
+        
+        String token = UUID.randomUUID().toString();
+        user.setVerificationToken(token);
 
         User savedUser = userRepository.save(user);
         ensureDefaultCategories(savedUser);
+        
+        // Send Premium Verification Email
+        emailService.sendVerificationEmail(savedUser, token, serverUrl);
+        
         return savedUser;
+    }
+    
+    @Transactional
+    public void verifyEmail(String token) {
+        User user = userRepository.findByVerificationToken(token)
+                .orElseThrow(() -> new RuntimeException("Token de vérification invalide."));
+        
+        user.setEnabled(true);
+        user.setVerificationToken(null);
+        userRepository.save(user);
+    }
+
+    public User findByVerificationToken(String token) {
+        return userRepository.findByVerificationToken(token)
+                .orElseThrow(() -> new UsernameNotFoundException("Utilisateur non trouvé avec ce token."));
     }
 
     private void ensureDefaultCategories(User user) {
@@ -138,6 +170,13 @@ public class UserService implements UserDetailsService {
         user.setMotDePasse(passwordEncoder.encode(newPassword));
         userRepository.save(user);
     }
+    @Transactional
+    public void updateUserStatus(Long id, boolean enabled) {
+        User user = findById(id);
+        user.setEnabled(enabled);
+        userRepository.save(user);
+    }
+
     @Transactional
     public void updateSolde(Long userId, java.math.BigDecimal amountChange) {
         User user = findById(userId);

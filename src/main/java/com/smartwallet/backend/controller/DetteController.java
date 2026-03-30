@@ -48,6 +48,23 @@ public class DetteController {
         return ResponseEntity.notFound().build();
     }
 
+    @PostMapping("/{id}/pay")
+    public ResponseEntity<Dette> addPayment(@PathVariable Long id, @RequestParam Double amount) {
+        try {
+            Dette updated = detteService.addPayment(id, amount);
+            return ResponseEntity.ok(updated);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Dette> updateDette(@PathVariable Long id, @RequestBody Dette dette, Authentication authentication) {
+        User user = userService.findByEmail(authentication.getName());
+        dette.setUser(user);
+        dette.setId(id);
+        return ResponseEntity.ok(detteService.saveDette(dette));
+    }
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteDette(@PathVariable Long id) {
         detteService.deleteDette(id);

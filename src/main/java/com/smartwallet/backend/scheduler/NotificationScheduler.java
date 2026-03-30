@@ -1,5 +1,6 @@
 package com.smartwallet.backend.scheduler;
 
+import com.smartwallet.backend.model.Dette;
 import com.smartwallet.backend.model.Alerte;
 import com.smartwallet.backend.model.Objectif;
 import com.smartwallet.backend.model.User;
@@ -26,6 +27,7 @@ public class NotificationScheduler {
     private final FirebaseService firebaseService;
     private final ObjectifRepository objectifRepository;
     private final AlerteRepository alerteRepository;
+    private final com.smartwallet.backend.repository.DetteRepository detteRepository;
 
     // Daily reminder at 20:00 if no expense was recorded today
     @Scheduled(cron = "0 0 20 * * *")
@@ -70,6 +72,39 @@ public class NotificationScheduler {
             alerteRepository.save(alerte);
 
             firebaseService.sendPushNotification(user, "⏰ Objectif non atteint", msg);
+        }
+    }
+
+    // Daily check at 08:30 for expired dettes that haven't been paid
+    @Scheduled(cron = "0 30 8 * * *")
+    public void checkExpiredDettes() {
+        log.info("Executing Expired Dettes Job...");
+        LocalDate today = LocalDate.now();
+        List<Dette> expiredDettes = detteRepository.findByIsPayeFalseAndDateLimiteBefore(today);
+        log.info("Found {} expired unpaid dettes for {}", expiredDettes.size(), today);
+
+        for (Dette dette : expiredDettes) {
+            User user = dette.getUser();
+            if (user == null)
+                continue;
+
+            String typeMsg = dette.getType() == com.smartwallet.backend.model.DetteType.PRETE 
+                    ? "On vous doit encore " 
+                    : "Vous devez encore rembourser ";
+            
+            Double remaining = dette.getMontant() - dette.getMontantPaye();
+
+            String msg = "⏳ La date limite pour la dette avec " + dette.getAmi()
+                    + " est dépassée. " + typeMsg + remaining + " !";
+
+            Alerte alerte = new Alerte();
+            alerte.setUser(user);
+            alerte.setDate(LocalDateTime.now());
+            alerte.setMessage(msg);
+            alerte.setConditionVerifiee(false);
+            alerteRepository.save(alerte);
+
+            firebaseService.sendPushNotification(user, "⏳ Dette expirée", msg);
         }
     }
 }
