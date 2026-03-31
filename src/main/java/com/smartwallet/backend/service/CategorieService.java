@@ -17,6 +17,9 @@ public class CategorieService {
     }
 
     public Categorie createCategorie(Categorie categorie) {
+        if (categorie.getType() != null) {
+            categorie.setType(categorie.getType().toUpperCase());
+        }
         if (categorieRepository.existsByNomIgnoreCaseAndUserIsNull(categorie.getNom()) ||
             (categorie.getUser() != null && categorieRepository.existsByNomIgnoreCaseAndUser(categorie.getNom(), categorie.getUser()))) {
             throw new RuntimeException("Catégorie existe déjà");
@@ -25,11 +28,24 @@ public class CategorieService {
     }
 
     public List<Categorie> getCategoriesByUser(com.smartwallet.backend.model.User user) {
-        return categorieRepository.findByUser(user);
+        return deduplicate(categorieRepository.findByUserOrUserIsNull(user));
     }
 
     public List<Categorie> getCategoriesByUserAndType(com.smartwallet.backend.model.User user, String type) {
-        return categorieRepository.findByUserAndType(user, type);
+        String normalizedType = (type != null) ? type.toUpperCase() : null;
+        return deduplicate(categorieRepository.findByUserOrUserIsNullAndType(user, normalizedType));
+    }
+
+    private List<Categorie> deduplicate(List<Categorie> categories) {
+        java.util.Map<String, Categorie> uniqueCats = new java.util.LinkedHashMap<>();
+        for (Categorie cat : categories) {
+            String key = cat.getNom().toLowerCase().trim();
+            Categorie existing = uniqueCats.get(key);
+            if (existing == null || cat.getUser() != null) {
+                uniqueCats.put(key, cat);
+            }
+        }
+        return new java.util.ArrayList<>(uniqueCats.values());
     }
 
     public Categorie updateCategorie(Long id, Categorie categorieDetails) {
@@ -45,7 +61,9 @@ public class CategorieService {
         }
 
         categorie.setNom(categorieDetails.getNom());
-        categorie.setType(categorieDetails.getType());
+        if (categorieDetails.getType() != null) {
+            categorie.setType(categorieDetails.getType().toUpperCase());
+        }
 
         return categorieRepository.save(categorie);
     }

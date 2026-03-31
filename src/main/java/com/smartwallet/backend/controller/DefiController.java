@@ -26,6 +26,12 @@ public class DefiController {
         return ResponseEntity.ok(defiService.getActiveDefis(user));
     }
 
+    @GetMapping("/history")
+    public ResponseEntity<List<Defi>> getDefiHistory(Authentication authentication) {
+        User user = userService.findByEmail(authentication.getName());
+        return ResponseEntity.ok(defiService.getDefiHistory(user));
+    }
+
     @PostMapping("/accept")
     public ResponseEntity<Defi> acceptDefi(@RequestBody Map<String, Object> payload, Authentication authentication) {
         User user = userService.findByEmail(authentication.getName());

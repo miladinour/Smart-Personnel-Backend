@@ -92,7 +92,8 @@ public class DepenseService {
 
         if (depense.getCategorie().getId() == null && depense.getCategorie().getNom() != null) {
             String nomCat = depense.getCategorie().getNom();
-            Categorie cat = categorieRepository.findByNomAndUser(nomCat, user)
+            Categorie cat = categorieRepository.findByNomAndUserOrUserIsNull(nomCat, user).stream()
+                    .findFirst()
                     .orElseGet(() -> {
                         Categorie newCat = new Categorie(nomCat);
                         newCat.setUser(user);

@@ -55,6 +55,10 @@ public class DefiService {
         }
     }
 
+    public List<Defi> getDefiHistory(User user) {
+        return defiRepository.findByUser(user);
+    }
+
     public void deleteDefi(Long id, User user) {
         Defi defi = defiRepository.findById(id)
                 .filter(d -> d.getUser().getId().equals(user.getId()))

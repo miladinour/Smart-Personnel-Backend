@@ -1,5 +1,6 @@
 package com.smartwallet.backend.controller;
 
+import com.smartwallet.backend.dto.BudgetResponse;
 import com.smartwallet.backend.model.Budget;
 import com.smartwallet.backend.model.User;
 import com.smartwallet.backend.service.BudgetService;
@@ -20,13 +21,13 @@ public class BudgetController {
     private final UserService userService;
 
     @GetMapping
-    public ResponseEntity<List<Budget>> getAllBudgets(Authentication authentication) {
+    public ResponseEntity<List<BudgetResponse>> getAllBudgets(Authentication authentication) {
         User user = userService.findByEmail(authentication.getName());
         return ResponseEntity.ok(budgetService.getBudgetsByUser(user));
     }
 
     @PostMapping
-    public ResponseEntity<Budget> createBudget(@RequestBody Budget budget, Authentication authentication) {
+    public ResponseEntity<BudgetResponse> createBudget(@RequestBody Budget budget, Authentication authentication) {
         User user = userService.findByEmail(authentication.getName());
         return ResponseEntity.ok(budgetService.createBudget(budget, user));
     }
