@@ -79,7 +79,8 @@ public class RevenuService {
 
         if (revenu.getCategorie().getId() == null && revenu.getCategorie().getNom() != null) {
             String nomCat = revenu.getCategorie().getNom();
-            Categorie cat = categorieRepository.findByNomAndUser(nomCat, user)
+            Categorie cat = categorieRepository.findByNomAndUserOrUserIsNull(nomCat, user).stream()
+                    .findFirst()
                     .orElseGet(() -> {
                         Categorie newCat = new Categorie(nomCat);
                         newCat.setUser(user);

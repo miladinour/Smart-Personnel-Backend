@@ -1,6 +1,8 @@
 package com.smartwallet.backend.controller;
 
 import com.smartwallet.backend.dto.BudgetDTO;
+import com.smartwallet.backend.dto.BudgetResponse;
+import com.smartwallet.backend.model.Budget;
 import com.smartwallet.backend.model.User;
 import com.smartwallet.backend.service.BudgetService;
 import com.smartwallet.backend.service.UserService;
@@ -23,8 +25,8 @@ public class BudgetController {
     @GetMapping
     public ResponseEntity<List<BudgetDTO>> getAllBudgets(Authentication authentication) {
         if (authentication == null || authentication.getName() == null) {
-             System.err.println(">>> BudgetController - ERROR: Authentication or name is null!");
-             throw new RuntimeException("Authentification requise");
+            System.err.println(">>> BudgetController - ERROR: Authentication or name is null!");
+            throw new RuntimeException("Authentification requise");
         }
         System.out.println(">>> BudgetController - Fetching budgets for user: " + authentication.getName());
         User user = userService.findByEmail(authentication.getName());
@@ -36,14 +38,15 @@ public class BudgetController {
         return ResponseEntity.ok(budgetService.getBudgetsByUser(user));
     }
 
-        @PostMapping
+    @PostMapping
     public ResponseEntity<BudgetDTO> createBudget(@RequestBody BudgetDTO budgetDTO, Authentication authentication) {
         User user = userService.findByEmail(authentication.getName());
         return ResponseEntity.ok(budgetService.createBudget(budgetDTO, user));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<BudgetDTO> updateBudget(@PathVariable("id") Long id, @RequestBody BudgetDTO budgetDTO, Authentication authentication) {
+    public ResponseEntity<BudgetDTO> updateBudget(@PathVariable("id") Long id, @RequestBody BudgetDTO budgetDTO,
+            Authentication authentication) {
         User user = userService.findByEmail(authentication.getName());
         return ResponseEntity.ok(budgetService.updateBudget(id, budgetDTO, user));
     }

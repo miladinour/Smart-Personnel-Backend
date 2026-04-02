@@ -4,6 +4,9 @@ import com.smartwallet.backend.dto.AlerteDTO;
 import com.smartwallet.backend.model.Alerte;
 import com.smartwallet.backend.model.User;
 import com.smartwallet.backend.repository.AlerteRepository;
+import com.smartwallet.backend.dto.AlertResponse;
+import com.smartwallet.backend.model.User;
+import com.smartwallet.backend.service.AlerteService;
 import com.smartwallet.backend.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,45 +19,35 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/alertes")
 @RequiredArgsConstructor
-@CrossOrigin("*")
 public class AlerteController {
 
-    private final AlerteRepository alerteRepository;
+    private final AlerteService alerteService;
     private final UserService userService;
 
     @GetMapping
-    public ResponseEntity<List<AlerteDTO>> getUserAlerts(Authentication authentication) {
+    public ResponseEntity<List<AlertResponse>> getAlertes(Authentication authentication) {
         User user = userService.findByEmail(authentication.getName());
-        List<Alerte> alertes = alerteRepository.findByUserOrderByDateDesc(user);
-        
-        List<AlerteDTO> dtos = alertes.stream().map(alerte -> {
-            AlerteDTO dto = new AlerteDTO();
-            dto.setId(alerte.getId());
-            dto.setDate(alerte.getDate());
-            dto.setMessage(alerte.getMessage());
-            dto.setConditionVerifiee(alerte.isConditionVerifiee());
-            
-            if (alerte.getBudget() != null) {
-                dto.setBudgetId(alerte.getBudget().getId());
-                if (alerte.getBudget().getCategorie() != null) {
-                    dto.setCategorieNom(alerte.getBudget().getCategorie().getNom());
-                }
-            }
-            return dto;
-        }).collect(Collectors.toList());
-        
-        return ResponseEntity.ok(dtos);
+        return ResponseEntity.ok(alerteService.getAlertesByUser(user));
     }
-    
+
     @PutMapping("/{id}/read")
-    public ResponseEntity<Void> markAsRead(@PathVariable("id") Long id, Authentication authentication) {
+    public ResponseEntity<Void> markAsRead(@PathVariable Long id, Authentication authentication) {
         User user = userService.findByEmail(authentication.getName());
-        Alerte alerte = alerteRepository.findById(id).orElse(null);
-        
-        if (alerte != null && alerte.getUser().getId().equals(user.getId())) {
-            alerte.setConditionVerifiee(true);
-            alerteRepository.save(alerte);
-        }
+        alerteService.markAsRead(id, user);
         return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteAlerte(@PathVariable Long id, Authentication authentication) {
+        User user = userService.findByEmail(authentication.getName());
+        alerteService.deleteAlerte(id, user);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/all")
+    public ResponseEntity<Void> deleteAll(Authentication authentication) {
+        User user = userService.findByEmail(authentication.getName());
+        alerteService.deleteAllByUser(user);
+        return ResponseEntity.noContent().build();
     }
 }

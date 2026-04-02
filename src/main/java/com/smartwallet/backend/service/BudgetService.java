@@ -1,6 +1,8 @@
 package com.smartwallet.backend.service;
 
 import com.smartwallet.backend.dto.BudgetDTO;
+import com.smartwallet.backend.dto.BudgetResponse;
+import com.smartwallet.backend.model.Depense;
 import com.smartwallet.backend.model.Budget;
 import com.smartwallet.backend.model.Categorie;
 import com.smartwallet.backend.model.Depense;
@@ -14,6 +16,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 

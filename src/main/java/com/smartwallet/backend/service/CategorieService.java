@@ -17,6 +17,9 @@ public class CategorieService {
     }
 
     public Categorie createCategorie(Categorie categorie) {
+        if (categorie.getType() != null) {
+            categorie.setType(categorie.getType().toUpperCase());
+        }
         if (categorieRepository.existsByNomIgnoreCaseAndUserIsNull(categorie.getNom()) ||
             (categorie.getUser() != null && categorieRepository.existsByNomIgnoreCaseAndUser(categorie.getNom(), categorie.getUser()))) {
             throw new RuntimeException("Catégorie existe déjà");
@@ -45,7 +48,9 @@ public class CategorieService {
         }
 
         categorie.setNom(categorieDetails.getNom());
-        categorie.setType(categorieDetails.getType());
+        if (categorieDetails.getType() != null) {
+            categorie.setType(categorieDetails.getType().toUpperCase());
+        }
 
         return categorieRepository.save(categorie);
     }
