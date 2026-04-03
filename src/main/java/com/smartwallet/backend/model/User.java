@@ -35,6 +35,8 @@ public class User extends Personne implements UserDetails {
     private String fcmToken;
     private boolean enabled = false;
     private String verificationToken;
+    private String resetInterval = "NONE";
+    private LocalDateTime lastResetDate;
 
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)

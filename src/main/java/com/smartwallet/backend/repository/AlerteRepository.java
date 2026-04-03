@@ -12,4 +12,7 @@ public interface AlerteRepository extends JpaRepository<Alerte, Long> {
     List<Alerte> findByUserOrderByDateDesc(@org.springframework.data.repository.query.Param("user") User user);
     List<Alerte> findByUser(@org.springframework.data.repository.query.Param("user") User user);
     List<Alerte> findByUserAndConditionVerifieeFalseOrderByDateDesc(@org.springframework.data.repository.query.Param("user") User user);
+
+    @org.springframework.transaction.annotation.Transactional
+    void deleteByUser(User user);
 }

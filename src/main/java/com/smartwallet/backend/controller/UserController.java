@@ -100,13 +100,22 @@ public class UserController {
         return ResponseEntity.ok(Map.of("message", "Token FCM mis à jour avec succès."));
     }
 
-    @PostMapping("/{id}/test-notification")
-    public ResponseEntity<?> testNotification(@PathVariable("id") Long id, Authentication authentication) {
+    @PostMapping("/{id}/reset")
+    public ResponseEntity<?> resetData(@PathVariable("id") Long id, Authentication authentication) {
         if (!isOwner(id, authentication)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Accès refusé."));
         }
-        User user = userService.findById(id);
-        firebaseService.sendPushNotification(user, "Test Push", "Ceci est une notification de test de Smart Finance !");
-        return ResponseEntity.ok(Map.of("message", "Notification de test envoyée !"));
+        userService.resetUserData(id);
+        return ResponseEntity.ok(Map.of("message", "Données réinitialisées avec succès."));
+    }
+
+    @PutMapping("/{id}/reset-interval")
+    public ResponseEntity<?> updateResetInterval(@PathVariable("id") Long id, @RequestBody Map<String, String> payload,
+            Authentication authentication) {
+        if (!isOwner(id, authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Accès refusé."));
+        }
+        userService.updateResetInterval(id, payload.get("interval"));
+        return ResponseEntity.ok(Map.of("message", "Intervalle de réinitialisation mis à jour."));
     }
 }

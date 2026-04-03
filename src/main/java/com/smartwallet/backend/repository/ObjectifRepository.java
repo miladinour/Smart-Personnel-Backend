@@ -16,4 +16,7 @@ public interface ObjectifRepository extends JpaRepository<Objectif, Long> {
 
     @Query("SELECT o FROM Objectif o WHERE o.atteint = false AND o.dateLimite IS NOT NULL AND o.dateLimite <= :today")
     List<Objectif> findExpiredUnachieved(@Param("today") LocalDate today);
+
+    @org.springframework.transaction.annotation.Transactional
+    void deleteByUser(User user);
 }

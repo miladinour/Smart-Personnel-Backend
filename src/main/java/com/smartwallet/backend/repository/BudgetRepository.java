@@ -13,4 +13,7 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
     
     @org.springframework.data.jpa.repository.Query("SELECT b FROM Budget b WHERE b.user = :user AND b.categorie.id = :categorieId AND b.dateDebut <= :date AND b.dateFin >= :date")
     java.util.Optional<Budget> findActiveBudgetForCategory(@org.springframework.data.repository.query.Param("user") User user, @org.springframework.data.repository.query.Param("categorieId") Long categorieId, @org.springframework.data.repository.query.Param("date") java.time.LocalDate date);
+
+    @org.springframework.transaction.annotation.Transactional
+    void deleteByUser(User user);
 }

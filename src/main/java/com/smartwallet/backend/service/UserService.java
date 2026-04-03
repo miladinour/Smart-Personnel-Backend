@@ -3,7 +3,13 @@ package com.smartwallet.backend.service;
 import com.smartwallet.backend.model.User;
 import com.smartwallet.backend.repository.PasswordResetTokenRepository;
 import com.smartwallet.backend.repository.UserRepository;
+import com.smartwallet.backend.repository.TransactionRepository;
+import com.smartwallet.backend.repository.BudgetRepository;
+import com.smartwallet.backend.repository.ObjectifRepository;
+import com.smartwallet.backend.repository.AlerteRepository;
 import java.util.UUID;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -23,6 +29,14 @@ public class UserService implements UserDetailsService {
     private PasswordResetTokenRepository passwordResetTokenRepository;
     @Autowired
     private com.smartwallet.backend.repository.CategorieRepository categorieRepository;
+    @Autowired
+    private TransactionRepository transactionRepository;
+    @Autowired
+    private BudgetRepository budgetRepository;
+    @Autowired
+    private ObjectifRepository objectifRepository;
+    @Autowired
+    private AlerteRepository alerteRepository;
     @Autowired
     @Lazy
     private PasswordEncoder passwordEncoder;
@@ -181,6 +195,30 @@ public class UserService implements UserDetailsService {
     public void updateSolde(Long userId, java.math.BigDecimal amountChange) {
         User user = findById(userId);
         user.setSoldeTotal(user.getSoldeTotal().add(amountChange));
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void resetUserData(Long userId) {
+        User user = findById(userId);
+        
+        // Supprimer toutes les données liées
+        transactionRepository.deleteByUser(user);
+        budgetRepository.deleteByUser(user);
+        objectifRepository.deleteByUser(user);
+        alerteRepository.deleteByUser(user);
+        
+        // Réinitialiser le solde
+        user.setSoldeTotal(BigDecimal.ZERO);
+        user.setLastResetDate(LocalDateTime.now());
+        
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void updateResetInterval(Long userId, String interval) {
+        User user = findById(userId);
+        user.setResetInterval(interval);
         userRepository.save(user);
     }
 }
