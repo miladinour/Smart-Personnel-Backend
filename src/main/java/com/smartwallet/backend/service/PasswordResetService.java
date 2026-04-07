@@ -23,8 +23,8 @@ public class PasswordResetService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
-    @Value("${app.server.url}")
-    private String serverUrl;
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
 
     @Transactional
     public void generatePasswordResetToken(String email) {
@@ -46,7 +46,7 @@ public class PasswordResetService {
             passwordResetTokenRepository.save(passwordResetToken);
 
             // Send email
-            String resetLink = serverUrl + "/reset-password.html?token=" + token;
+            String resetLink = frontendUrl + "/reset-password?token=" + token;
             String emailBody = "Vous avez demandé la réinitialisation de votre mot de passe.\n\n"
                     + "Veuillez cliquer sur le lien ci-dessous pour le réinitialiser :\n"
                     + resetLink + "\n\n"

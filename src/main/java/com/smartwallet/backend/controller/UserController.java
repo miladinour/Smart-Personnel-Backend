@@ -28,7 +28,12 @@ public class UserController {
         return user.getEmail().equals(authentication.getName());
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/me")
+    public ResponseEntity<User> getCurrentUser(Authentication authentication) {
+        return ResponseEntity.ok(userService.findByEmail(authentication.getName()));
+    }
+
+    @GetMapping("/{id:[0-9]+}")
     public ResponseEntity<?> getUserById(@PathVariable("id") Long id, Authentication authentication) {
         if (!isOwner(id, authentication)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -38,7 +43,13 @@ public class UserController {
         return ResponseEntity.ok(userService.findById(id));
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/profile")
+    public ResponseEntity<User> updateProfile(@RequestBody User userDetails, Authentication authentication) {
+        User user = userService.findByEmail(authentication.getName());
+        return ResponseEntity.ok(userService.updateUser(user.getId(), userDetails));
+    }
+
+    @PutMapping("/{id:[0-9]+}")
     public ResponseEntity<?> updateUser(@PathVariable("id") Long id, @RequestBody User userDetails,
             Authentication authentication) {
         if (!isOwner(id, authentication)) {
@@ -49,7 +60,7 @@ public class UserController {
         return ResponseEntity.ok(userService.updateUser(id, userDetails));
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{id:[0-9]+}")
     public ResponseEntity<?> deleteUser(@PathVariable("id") Long id, Authentication authentication) {
         if (!isOwner(id, authentication)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)

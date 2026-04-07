@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Collection;
 import java.util.Collections;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @Entity
 @Table(name = "utilisateur")
@@ -20,6 +21,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class User extends Personne implements UserDetails {
 
     private String numTele = "";

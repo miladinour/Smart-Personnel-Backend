@@ -10,4 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
     @Transactional
     void deleteByUser(User user);
+
+    java.util.List<Transaction> findByUserOrderByDateDesc(User user);
 }
