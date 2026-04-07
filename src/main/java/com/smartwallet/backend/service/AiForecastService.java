@@ -1,14 +1,23 @@
 package com.smartwallet.backend.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartwallet.backend.dto.AiForecast;
 import com.smartwallet.backend.model.Depense;
 import com.smartwallet.backend.model.Revenu;
 import com.smartwallet.backend.model.User;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
@@ -16,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -23,121 +33,129 @@ public class AiForecastService {
 
     private final DepenseService depenseService;
     private final RevenuService revenuService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Value("${gemini.api.key:YOUR_API_KEY_HERE}")
+    private String geminiApiKey;
 
     public List<AiForecast> getForecasts(User user) {
-        System.out.println(">>> AI Forecast - Processing for user: " + user.getEmail());
-        List<AiForecast> forecasts = new ArrayList<>();
+        System.out.println(">>> AI Forecast - Processing REAL AI for user: " + user.getEmail());
+        
+        // 1. Fetch History Data (Last 60 days for better trend detection)
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime oneMonthAgo = now.minusDays(30);
+        LocalDateTime sixtyDaysAgo = now.minusDays(60);
+        
+        List<Depense> historyDepenses = depenseService.getDepensesByUser(user, sixtyDaysAgo, now, null);
+        List<Revenu> historyRevenus = revenuService.getRevenusByUser(user, sixtyDaysAgo, now, null);
 
-        try {
-            // 1. Fetch data for analysis (Last 30 days)
-            List<Depense> recentDepenses = depenseService.getDepensesByUser(user, oneMonthAgo, now, null);
-            List<Revenu> recentRevenus = revenuService.getRevenusByUser(user, oneMonthAgo, now, null);
-            System.out.println(">>> AI Forecast - Found " + recentDepenses.size() + " expenses and " + recentRevenus.size() + " revenues");
-
-            BigDecimal totalExpenses = recentDepenses.stream()
-                    .map(Depense::getMontant)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            BigDecimal totalIncome = recentRevenus.stream()
-                    .map(Revenu::getMontant)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // Daily averages as base for projection
-            BigDecimal dailyExpenseAvg = totalExpenses.divide(new BigDecimal(30), 2, RoundingMode.HALF_UP);
-            BigDecimal dailyIncomeAvg = totalIncome.divide(new BigDecimal(30), 2, RoundingMode.HALF_UP);
-
-            // 2. Generate forecasts for the next 3 months
-            for (int i = 1; i <= 3; i++) {
-                LocalDateTime targetMonth = now.plusMonths(i);
-                String monthName = targetMonth.getMonth().getDisplayName(TextStyle.FULL, Locale.FRENCH) + " " + targetMonth.getYear();
-                
-                // Basic projection: daily avg * 30 (simplified)
-                BigDecimal predictedExpenses = dailyExpenseAvg.multiply(new BigDecimal(30));
-                BigDecimal predictedIncome = dailyIncomeAvg.multiply(new BigDecimal(30));
-                
-                // Add some variation for realism (e.g., slight growth)
-                predictedExpenses = predictedExpenses.multiply(new BigDecimal(1.0 + (i * 0.05))); 
-
-                List<String> insights = generateInsights(predictedIncome, predictedExpenses, user);
-
-                BigDecimal optimisticExpenses = predictedExpenses.multiply(new BigDecimal(0.85));
-                BigDecimal pessimisticExpenses = predictedExpenses.multiply(new BigDecimal(1.15));
-
-                forecasts.add(new AiForecast(
-                    monthName,
-                    null, // Global
-                    predictedIncome.setScale(2, RoundingMode.HALF_UP),
-                    predictedExpenses.setScale(2, RoundingMode.HALF_UP),
-                    optimisticExpenses.setScale(2, RoundingMode.HALF_UP),
-                    pessimisticExpenses.setScale(2, RoundingMode.HALF_UP),
-                    0.85 - (i * 0.05),
-                    insights
-                ));
-
-                // 3. Category-specific forecasts (Top 3) - Based on RECENT expenses
-                Map<String, BigDecimal> categoryRecentStats = new HashMap<>();
-                for (Depense d : recentDepenses) {
-                    if (d.getCategorie() != null && d.getCategorie().getNom() != null) {
-                        String catName = d.getCategorie().getNom();
-                        categoryRecentStats.put(catName, categoryRecentStats.getOrDefault(catName, BigDecimal.ZERO).add(d.getMontant()));
-                    }
-                }
-
-                final int monthIndex = i; // Fix: effectively final for lambda
-                categoryRecentStats.entrySet().stream()
-                    .sorted((e1, e2) -> e2.getValue().compareTo(e1.getValue()))
-                    .limit(3)
-                    .forEach(entry -> {
-                        String categoryName = entry.getKey();
-                        BigDecimal monthlyAvg = entry.getValue(); 
-                        
-                        BigDecimal predictedCatEx = monthlyAvg.multiply(BigDecimal.valueOf(1.0 + (monthIndex * 0.03))); 
-                        
-                        List<String> catInsights = new ArrayList<>();
-                        catInsights.add("Analyse IA : Pour '" + categoryName + "', vos dépenses prévues en " + targetMonth.getMonth().getDisplayName(TextStyle.FULL, Locale.FRENCH) + " sont de " + predictedCatEx.setScale(0, RoundingMode.HALF_UP) + " DT.");
-                        
-                        BigDecimal optimisticCatEx = predictedCatEx.multiply(BigDecimal.valueOf(0.9));
-                        BigDecimal pessimisticCatEx = predictedCatEx.multiply(BigDecimal.valueOf(1.1));
-
-                        forecasts.add(new AiForecast(
-                            monthName,
-                            categoryName,
-                            BigDecimal.ZERO,
-                            predictedCatEx.setScale(2, RoundingMode.HALF_UP),
-                            optimisticCatEx.setScale(2, RoundingMode.HALF_UP),
-                            pessimisticCatEx.setScale(2, RoundingMode.HALF_UP),
-                            0.75 - (monthIndex * 0.05),
-                            catInsights
-                        ));
-                    });
+        // 2. Try LLM Forecast
+        if (geminiApiKey != null && geminiApiKey.length() > 10) {
+            List<AiForecast> llmResult = callGeminiForForecast(user, historyDepenses, historyRevenus);
+            if (llmResult != null && !llmResult.isEmpty()) {
+                return llmResult;
             }
-        } catch (Exception e) {
-            System.err.println(">>> AI Forecast - Error: " + e.getMessage());
-            e.printStackTrace();
         }
 
-        System.out.println(">>> AI Forecast - Returning " + forecasts.size() + " forecasts");
-        return forecasts;
+        // 3. Fallback to Statistical/Manual Calculation
+        return generateStatisticalForecast(user, historyDepenses, historyRevenus);
     }
 
-    private List<String> generateInsights(BigDecimal income, BigDecimal expenses, User user) {
-        List<String> insights = new ArrayList<>();
-        BigDecimal balance = income.subtract(expenses);
-        BigDecimal annualProjection = expenses.multiply(new BigDecimal(12));
+    private List<AiForecast> callGeminiForForecast(User user, List<Depense> depenses, List<Revenu> revenus) {
+        try {
+            // Aggregate data by month & category for the prompt
+            String context = formatHistoryContext(depenses, revenus);
+            
+            String prompt = "Tu es un expert en prévisions financières. Voici l'historique de l'utilisateur sur les 60 derniers jours :\n" +
+                    context + "\n" +
+                    "Génère une prévision pour les 3 PROCHAINS MOIS.\n" +
+                    "Règles :\n" +
+                    "1. Prédit le Revenu Total et la Dépense Totale par mois.\n" +
+                    "2. Identifie les 3 catégories de dépenses les plus importantes.\n" +
+                    "3. Fournis des conseils (insights) concrets.\n" +
+                    "4. RÉPONDS UNIQUEMENT AU FORMAT JSON (liste d'objets) :\n" +
+                    "[ {\"month\": \"Octobre 2024\", \"category\": null, \"predictedIncome\": 3000, \"predictedExpenses\": 2500, \"optimisticExpenses\": 2100, \"pessimisticExpenses\": 2900, \"confidence\": 0.9, \"insights\": [\"...\"]}, " +
+                    "  {\"month\": \"Octobre 2024\", \"category\": \"Alimentation\", \"predictedIncome\": 0, \"predictedExpenses\": 600, \"confidence\": 0.8, \"insights\": []} ]";
 
-        // specific wording requested by user
-        insights.add("Selon vos dépenses actuelles, votre solde estimé à la fin du mois sera de " + balance.setScale(0, RoundingMode.HALF_UP) + " DT.");
-        
-        if (balance.compareTo(BigDecimal.ZERO) < 0) {
-            insights.add("Attention : Votre comportement actuel pourrait mener à un découvert.");
-        } else {
-            insights.add("Vous pouvez économiser environ " + balance.multiply(new BigDecimal(0.3)).setScale(0, RoundingMode.HALF_UP) + " DT ce mois-ci si vous limitez les dépenses non essentielles.");
+            Map<String, Object> requestBody = Map.of(
+                "contents", new Object[]{
+                    Map.of("parts", new Object[]{
+                        Map.of("text", prompt)
+                    })
+                },
+                "generationConfig", Map.of(
+                    "response_mime_type", "application/json"
+                )
+            );
+
+            String jsonBody = objectMapper.writeValueAsString(requestBody);
+            String model = "gemini-2.5-flash"; // Priority model per user instructions
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + geminiApiKey))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(15))
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                    .build();
+
+            HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 200) {
+                JsonNode root = objectMapper.readTree(response.body());
+                String jsonText = root.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText();
+                return objectMapper.readValue(jsonText, new TypeReference<List<AiForecast>>() {});
+            }
+        } catch (Exception e) {
+            System.err.println(">>> AI Forecast LLM Error: " + e.getMessage());
         }
+        return null;
+    }
 
-        insights.add("Si vos habitudes restent identiques, vos dépenses annuelles seront de " + annualProjection.setScale(0, RoundingMode.HALF_UP) + " DT.");
+    private String formatHistoryContext(List<Depense> depenses, List<Revenu> revenus) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Dépenses :\n");
+        Map<String, BigDecimal> depByCat = depenses.stream()
+                .collect(Collectors.groupingBy(d -> d.getCategorie() != null ? d.getCategorie().getNom() : "Autre",
+                        Collectors.mapping(Depense::getMontant, Collectors.reducing(BigDecimal.ZERO, BigDecimal::add))));
+        depByCat.forEach((cat, amount) -> sb.append("- ").append(cat).append(" : ").append(amount).append("\n"));
+        
+        sb.append("\nRevenus :\n");
+        BigDecimal totalRev = revenus.stream().map(Revenu::getMontant).reduce(BigDecimal.ZERO, BigDecimal::add);
+        sb.append("- Total : ").append(totalRev).append("\n");
+        
+        return sb.toString();
+    }
 
-        return insights;
+    private List<AiForecast> generateStatisticalForecast(User user, List<Depense> recentDepenses, List<Revenu> recentRevenus) {
+        List<AiForecast> forecasts = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        BigDecimal totalExpenses = recentDepenses.stream().map(Depense::getMontant).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalIncome = recentRevenus.stream().map(Revenu::getMontant).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal dailyExpenseAvg = totalExpenses.divide(new BigDecimal(60), 2, RoundingMode.HALF_UP);
+        BigDecimal dailyIncomeAvg = totalIncome.divide(new BigDecimal(60), 2, RoundingMode.HALF_UP);
+
+        for (int i = 1; i <= 3; i++) {
+            LocalDateTime targetMonth = now.plusMonths(i);
+            String monthName = targetMonth.getMonth().getDisplayName(TextStyle.FULL, Locale.FRENCH) + " " + targetMonth.getYear();
+            
+            BigDecimal predictedExpenses = dailyExpenseAvg.multiply(new BigDecimal(30)).multiply(new BigDecimal(1.0 + (i * 0.03)));
+            BigDecimal predictedIncome = dailyIncomeAvg.multiply(new BigDecimal(30));
+
+            List<String> insights = new ArrayList<>();
+            insights.add("Basé sur vos moyennes récentes, nous prévoyons une stabilité de vos dépenses.");
+
+            forecasts.add(new AiForecast(
+                monthName,
+                null,
+                predictedIncome.setScale(2, RoundingMode.HALF_UP),
+                predictedExpenses.setScale(2, RoundingMode.HALF_UP),
+                predictedExpenses.multiply(new BigDecimal(0.9)).setScale(2, RoundingMode.HALF_UP),
+                predictedExpenses.multiply(new BigDecimal(1.1)).setScale(2, RoundingMode.HALF_UP),
+                0.8,
+                insights
+            ));
+        }
+        return forecasts;
     }
 }

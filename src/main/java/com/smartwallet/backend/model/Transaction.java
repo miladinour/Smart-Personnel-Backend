@@ -27,7 +27,7 @@ public abstract class Transaction implements Serializable {
     private String description;
 
 
-    @CreationTimestamp
+    @Column(name = "date")
     private LocalDateTime date;
 
     @ManyToOne(fetch = FetchType.LAZY)
