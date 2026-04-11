@@ -10,11 +10,12 @@ import java.io.Serializable;
 @Entity
 @Table(name = "categories", uniqueConstraints = {
         @UniqueConstraint(columnNames = { "nom", "user_id" })
-}) // pour que deux users puissent créer une categorie portant le meme nom
+})
 @Data
 @NoArgsConstructor
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
 public class Categorie implements Serializable {
+
 
     public Categorie(String nom) {
         this.nom = nom;

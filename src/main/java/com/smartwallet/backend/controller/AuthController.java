@@ -41,7 +41,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<java.util.Map<String, String>> registerUser(@RequestBody com.smartwallet.backend.dto.RegisterRequest request) throws Exception {
+    public ResponseEntity<java.util.Map<String, Object>> registerUser(@RequestBody com.smartwallet.backend.dto.RegisterRequest request) throws Exception {
         log.info("📥 Inscription reçue pour: {}", request.getEmail());
         log.debug("Détails: nom={}, prenom={}, email={}, passLen={}", 
             request.getNom(), request.getPrenom(), request.getEmail(), 
@@ -58,9 +58,16 @@ public class AuthController {
         user.setEmail(request.getEmail());
         user.setMotDePasse(request.getMotDePasse());
         
-        userService.register(user);
-        java.util.Map<String, String> response = new java.util.HashMap<>();
+        User savedUser = userService.register(user);
+        String token = jwtService.generateToken(savedUser.getEmail());
+
+        java.util.Map<String, Object> response = new java.util.HashMap<>();
         response.put("message", "Inscription réussie. Veuillez vérifier votre email pour activer votre compte.");
+        response.put("id", savedUser.getId());
+        response.put("nom", savedUser.getNom());
+        response.put("prenom", savedUser.getPrenom());
+        response.put("email", savedUser.getEmail());
+        response.put("token", token);
         return ResponseEntity.ok(response);
     }
 

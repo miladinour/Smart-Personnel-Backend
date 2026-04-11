@@ -1,75 +1,133 @@
 package com.smartwallet.backend.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartwallet.backend.model.Categorie;
 import com.smartwallet.backend.model.User;
 import com.smartwallet.backend.repository.CategorieRepository;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
 public class AiCategorizationService {
 
     private final CategorieRepository categorieRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final Map<String, String[]> KEYWORDS = new HashMap<>();
+    @Value("${gemini.api.key}")
+    private String geminiApiKey;
 
-    static {
-        KEYWORDS.put("Alimentation", new String[] { "restau", "burger", "pizza", "carrefour", "monoprix", "magasin",
-                "food", "eat", "cafe", "nourriture", "courses", "fastfood","restaurant","chocolat","gateau","pain",
-                "boulangerie","patisserie","supermarche","superette","glace","soda","jus","eau","lait","yaourt",
-                "fromage","viande","poisson","fruit","legume","snack","snack bar","cafe","cafe bar","cafe restaurant",
-                "cafe restaurant bar","cafe restaurant bar pub","cafe restaurant bar pub pub",});
-        KEYWORDS.put("Transport", new String[] { "uber", "bolt", "taxi", "essence", "car", "train", "bus", "parking",
-                "carburant", "vol","voiture","voiture de location"});
-        KEYWORDS.put("Loisirs", new String[] { "cinéma", "netflix", "ps5", "jeu", "sortie", "party", "club", "vacances",
-                "sport", "gym" });
-        KEYWORDS.put("Santé",
-                new String[] { "pharmacie", "docteur", "hosto", "medecin", "dentiste", "clinique", "soin" ,"hopital",
-                "hopital militaire","clinique veterinaire"});
-        KEYWORDS.put("Shopping",
-                new String[] { "habit", "vêtement", "zara", "h&m", "jouet", "achat", "mall", "decathlon","magasin",
-                "magasin de vetement","magasin de chaussure","magasin de chaussure"});
-        KEYWORDS.put("Logement",
-                new String[] { "loyer", "électricité", "eau", "gaz", "internet", "assurance", "meuble", "travaux" });
-        KEYWORDS.put("Salaire", new String[] { "salaire", "vir", "virement", "bonus", "paye", "rémunération" });
+    public AiCategorizationService(CategorieRepository categorieRepository) {
+        this.categorieRepository = categorieRepository;
     }
 
     public Categorie categorize(String description, String type, User user) {
-        if (description == null || description.isEmpty()) {
-            return getOrCreateOtherCategory(user, type);
+        System.out.println(">>> [AiCategorization] Categorizing: " + description + " (type: " + type + ")");
+        
+        String desc = description.toLowerCase();
+
+        // --- GESTION DES REVENUS ---
+        if ("REVENU".equalsIgnoreCase(type) || matches(desc, "salaire", "revenu", "gain", "reçu", "virement")) {
+            return findOrCreateCategory("Salaire & Revenus", user, "REVENU");
         }
 
-        String descLower = description.toLowerCase();
+        // --- ALIMENTATION & RESTAURATION ---
+        if (matches(desc, "monoprix", "carrefour", "mg", "restau", "manger", "viande", "poulet", "boucherie", "lait", "pain", "boulangerie", "pizza", "café", "coffee", "dîner", "déjeuner", "alimentation", "épicerie", "fruits", "légumes", "kfc", "mac", "food")) {
+            return findOrCreateCategory("Alimentation", user, "DEPENSE");
+        }
 
-        for (Map.Entry<String, String[]> entry : KEYWORDS.entrySet()) {
-            for (String keyword : entry.getValue()) {
-                if (descLower.contains(keyword)) {
-                    return getOrCreateCategory(entry.getKey(), type, user);
-                }
+        // --- TRANSPORT ---
+        if (matches(desc, "taxi", "bolt", "essence", "car", "gasoil", "parking", "autoroute", "peage", "bus", "train", "vitesse", "lavage", "mécanicien", "pneu", "transport")) {
+            return findOrCreateCategory("Transport", user, "DEPENSE");
+        }
+
+        // --- SHOPPING & VETEMENTS ---
+        if (matches(desc, "chaussure", "joliesse", "habit", "vêtement", "shopping", "zara", "pull", "chemise", "boutique", "mall", "geant", "azur", "pantalon", "robe", "sac", "bijou", "bague", "collier")) {
+            return findOrCreateCategory("Shopping", user, "DEPENSE");
+        }
+
+        // --- SANTÉ ---
+        if (matches(desc, "pharma", "doc", "clinique", "médicament", "dentiste", "santé", "hôpital", "analyse", "soin")) {
+            return findOrCreateCategory("Santé", user, "DEPENSE");
+        }
+
+        // --- FACTURES & MAISON ---
+        if (matches(desc, "steg", "sonede", "loyer", "internet", "telecom", "ooredoo", "orange", "topnet", "électricité", "gaz", "eau", "facture", "foyer", "meuble")) {
+            return findOrCreateCategory("Logement & Factures", user, "DEPENSE");
+        }
+
+        // --- LOISIRS & DIVERS ---
+        if (matches(desc, "cinéma", "netflix", "cadeau", "sport", "salle", "club", "vacances", "voyage", "hôtel", "abonnement")) {
+            return findOrCreateCategory("Loisirs", user, "DEPENSE");
+        }
+
+        // 2. AI Call
+        try {
+            List<Categorie> existingCategories = categorieRepository.findByUser(user);
+            String catName = callLLMToCategorize(description, type, existingCategories);
+            if (catName != null && !catName.isEmpty()) {
+                return findOrCreateCategory(catName, user, type);
             }
-        }
-
-        return getOrCreateOtherCategory(user, type);
+        } catch (Exception e) {}
+        
+        return findOrCreateCategory("Autre", user, type);
     }
 
-    private Categorie getOrCreateCategory(String nom, String type, User user) {
-        Optional<Categorie> existing = categorieRepository.findByNomAndUser(nom, user);
-        if (existing.isPresent()) {
-            return existing.get();
+    private boolean matches(String text, String... keywords) {
+        for (String k : keywords) {
+            if (text.contains(k)) return true;
         }
-        Categorie newCat = new Categorie();
-        newCat.setNom(nom);
-        newCat.setType(type);
-        newCat.setUser(user);
-        return categorieRepository.save(newCat);
+        return false;
     }
 
-    private Categorie getOrCreateOtherCategory(User user, String type) {
-        return getOrCreateCategory("Autre", type, user);
+    private String getCleanKey() {
+        return (geminiApiKey != null) ? geminiApiKey.trim().split(" ")[0] : "";
+    }
+
+    private String callLLMToCategorize(String description, String type, List<Categorie> existing) {
+        try {
+            String prompt = "Catégorise cette transaction (" + type + ") : \"" + description + "\". " +
+                           "Choisis PARMI : " + existing.stream().map(Categorie::getNom).toList() + " ou une nouvelle catégorie simple. " +
+                           "Réponds UNIQUEMENT le NOM de la catégorie.";
+
+            Map<String, Object> body = Map.of(
+                "contents", new Object[]{Map.of("parts", new Object[]{Map.of("text", prompt)})}
+            );
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" + getCleanKey()))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(10))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                    .build();
+
+            HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() == 200) {
+                JsonNode root = objectMapper.readTree(response.body());
+                return root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText().trim();
+            }
+        } catch (Exception e) {}
+        return null;
+    }
+
+    private Categorie findOrCreateCategory(String nom, User user, String type) {
+        return categorieRepository.findByUser(user).stream()
+                .filter(c -> c.getNom().equalsIgnoreCase(nom))
+                .findFirst()
+                .orElseGet(() -> {
+                    Categorie newCat = new Categorie(Character.toUpperCase(nom.charAt(0)) + nom.substring(1).toLowerCase());
+                    newCat.setUser(user);
+                    newCat.setType(type != null ? type.toUpperCase() : "DEPENSE");
+                    return categorieRepository.save(newCat);
+                });
     }
 }

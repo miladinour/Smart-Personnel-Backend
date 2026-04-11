@@ -7,8 +7,8 @@ import java.math.BigDecimal;
 import java.util.List;
 
 @Data
-
 @NoArgsConstructor
+@AllArgsConstructor
 public class AiForecast {
     private String month;
     private String category; // null for total forecast
@@ -18,17 +18,4 @@ public class AiForecast {
     private BigDecimal pessimisticExpenses;
     private Double confidence;
     private List<String> insights;
-
-    public AiForecast(String month, String category, BigDecimal predictedIncome, 
-                      BigDecimal predictedExpenses, BigDecimal optimisticExpenses, 
-                      BigDecimal pessimisticExpenses, Double confidence, List<String> insights) {
-        this.month = month;
-        this.category = category;
-        this.predictedIncome = predictedIncome;
-        this.predictedExpenses = predictedExpenses;
-        this.optimisticExpenses = optimisticExpenses;
-        this.pessimisticExpenses = pessimisticExpenses;
-        this.confidence = confidence;
-        this.insights = insights;
-    }
 }
