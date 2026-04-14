@@ -89,7 +89,7 @@ public class UserService implements UserDetailsService {
         ensureDefaultCategories(savedUser);
         
         // Send Premium Verification Email
-        emailService.sendVerificationEmail(savedUser, token, serverUrl);
+        // emailService.sendVerificationEmail(savedUser, token, serverUrl);
         
         return savedUser;
     }
@@ -138,12 +138,12 @@ public class UserService implements UserDetailsService {
     public User updateUser(Long id, User userDetails) {
         User user = findById(id);
 
-        user.setNom(userDetails.getNom());
-        user.setPrenom(userDetails.getPrenom());
-        user.setNumTele(userDetails.getNumTele());
-        user.setPays(userDetails.getPays());
-        user.setDevise(userDetails.getDevise());
-        user.setGenre(userDetails.getGenre());
+        if (userDetails.getNom() != null) user.setNom(userDetails.getNom());
+        if (userDetails.getPrenom() != null) user.setPrenom(userDetails.getPrenom());
+        if (userDetails.getNumTele() != null) user.setNumTele(userDetails.getNumTele());
+        if (userDetails.getPays() != null) user.setPays(userDetails.getPays());
+        if (userDetails.getDevise() != null) user.setDevise(userDetails.getDevise());
+        if (userDetails.getGenre() != null) user.setGenre(userDetails.getGenre());
 
         // On ne change pas l'email ni le mot de passe ici par sécurité
         // (Ou alors avec des validations spécifiques)

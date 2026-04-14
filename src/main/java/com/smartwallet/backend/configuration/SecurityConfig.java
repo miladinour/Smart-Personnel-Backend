@@ -2,6 +2,7 @@ package com.smartwallet.backend.configuration;
 
 import com.smartwallet.backend.filter.JwtAuthFilter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -28,17 +29,23 @@ public class SecurityConfig {
     @Autowired
     private UserDetailsService userDetailsService;
 
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
+
+    @Value("${app.server.url}")
+    private String serverUrl;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(request -> {
-                    var corsConfiguration = new org.springframework.web.cors.CorsConfiguration();
-                    corsConfiguration.setAllowedOrigins(List.of("*"));
-                    corsConfiguration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-                    corsConfiguration.setAllowedHeaders(
-                            List.of("Authorization", "Content-Type", "Accept", "ngrok-skip-browser-warning"));
-                    corsConfiguration.setExposedHeaders(List.of("Authorization", "ngrok-skip-browser-warning"));
+                        var corsConfiguration = new org.springframework.web.cors.CorsConfiguration();
+                        corsConfiguration.setAllowedOriginPatterns(List.of("*"));
+                        corsConfiguration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+                        corsConfiguration.setAllowedHeaders(List.of("*"));
+                        corsConfiguration.setAllowCredentials(true);
+                        corsConfiguration.setExposedHeaders(List.of("Authorization", "ngrok-skip-browser-warning"));
                     return corsConfiguration;
                 }))
                 .authorizeHttpRequests(auth -> auth
@@ -48,7 +55,6 @@ public class SecurityConfig {
                                 "/api/auth/google",
                                 "/api/auth/forgot-password",
                                 "/api/auth/reset-password",
-                                "/api/debug/**",
                                 "/reset-password.html",
                                 "/error",
                                 "/uploads/**")

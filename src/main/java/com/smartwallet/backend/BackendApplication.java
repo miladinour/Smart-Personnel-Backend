@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootApplication
 @org.springframework.scheduling.annotation.EnableScheduling
+@org.springframework.scheduling.annotation.EnableAsync
 public class BackendApplication {
 
 	public static void main(String[] args) {
@@ -28,6 +29,7 @@ public class BackendApplication {
 				jdbcTemplate.execute("UPDATE utilisateur SET enabled = TRUE WHERE enabled IS NULL");
 				System.out.println("✓ Utilisateurs existants activés.");
 
+/* 
 				// 3. Supprimer les données dépendantes par EMAIL (plus fiable que par ID)
 				String testEmail = "mejdoubabir272@gmail.com";
 				System.out.println("... Tentative de nettoyage pour : " + testEmail);
@@ -55,6 +57,7 @@ public class BackendApplication {
 				} catch (org.springframework.dao.EmptyResultDataAccessException e) {
 					System.out.println("i Aucun ancien compte à nettoyer pour " + testEmail);
 				}
+				*/
 
 				System.out.println("=== REPARATION TERMINEE AVEC SUCCES ===");
 			} catch (Exception e) {

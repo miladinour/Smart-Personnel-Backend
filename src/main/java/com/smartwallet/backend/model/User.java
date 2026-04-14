@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Collection;
 import java.util.Collections;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @Entity
 @Table(name = "utilisateur")
@@ -20,6 +21,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class User extends Personne implements UserDetails {
 
     private String numTele = "";
@@ -28,7 +30,7 @@ public class User extends Personne implements UserDetails {
     private String devise = "TND";
     private java.time.LocalDateTime dateCreation = java.time.LocalDateTime.now();
 
-    @Column(precision = 19, scale = 2)
+    @Column(precision = 19, scale = 3)
     private BigDecimal soldeTotal = BigDecimal.ZERO;
 
     private String photoProfil;

@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
-public class Administrateur extends Personne {
+public class Administrateur extends User {
 
     public void gererUtilisateur() {
         // Logique de gestion

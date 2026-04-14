@@ -15,5 +15,6 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     Optional<PasswordResetToken> findByUser(@org.springframework.data.repository.query.Param("user") User user);
 
     @Modifying
+    @org.springframework.transaction.annotation.Transactional
     void deleteByUser(@org.springframework.data.repository.query.Param("user") User user);
 }

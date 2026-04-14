@@ -11,43 +11,90 @@ import com.smartwallet.backend.service.UserService;
 import com.smartwallet.backend.service.PasswordResetService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-@CrossOrigin("*")
 public class AuthController {
     private final JwtService jwtService;
-    private final AuthenticationManager authenticationManager;
     private final UserService userService;
+    private final com.smartwallet.backend.repository.AdminRepository adminRepository;
+    private final com.smartwallet.backend.repository.PersonneRepository personneRepository;
+    private final org.springframework.security.authentication.AuthenticationManager authenticationManager;
     private final PasswordResetService passwordResetService;
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> authenticateAndGetToken(@RequestBody LoginRequest authRequest) {
-        // Auto-enable account if it exists but is disabled (bypass verification for Dev)
-        User userExist = userService.findByEmail(authRequest.getEmail());
-        if (userExist != null && !userExist.isEnabled()) {
-            userExist.setEnabled(true);
-            userService.updateUserStatus(userExist.getId(), true);
+    public ResponseEntity<?> authenticateAndGetToken(@RequestBody LoginRequest authRequest) {
+        try {
+            // Log for security auditing (excluding sensitive password)
+            log.info("🔐 Tentative de connexion pour : {}", authRequest.getEmail());
+            
+            // --- STRICT VERIFICATION ---
+            // This will throw an exception if the password doesn't match the encoded one in DB
+            authenticationManager.authenticate(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                    authRequest.getEmail(), 
+                    authRequest.getMotDePasse()
+                )
+            );
+
+            String token = jwtService.generateToken(authRequest.getEmail());
+            
+            com.smartwallet.backend.model.Personne personne = personneRepository.findByEmail(authRequest.getEmail())
+                    .orElseThrow(() -> new org.springframework.security.core.userdetails.UsernameNotFoundException("Utilisateur non trouvé"));
+
+            String role = adminRepository.findByEmail(authRequest.getEmail()).isPresent() ? "ADMIN" : "USER";
+            
+            log.info("✅ Connexion réussie pour : {}", authRequest.getEmail());
+            return ResponseEntity.ok(new AuthResponse(token, personne.getId(), personne.getEmail(), role));
+
+        } catch (org.springframework.security.authentication.BadCredentialsException e) {
+            log.warn("❌ Échec de connexion : Mot de passe incorrect pour {}", authRequest.getEmail());
+            return ResponseEntity.status(401).body(java.util.Map.of("message", "Mot de passe incorrect"));
+        } catch (org.springframework.security.authentication.DisabledException | org.springframework.security.authentication.LockedException e) {
+            log.warn("🔄 Activation automatique du compte pour {}", authRequest.getEmail());
+            // Auto-enable for Dev/Test environments to bypass email verification issues
+            com.smartwallet.backend.model.User user = (com.smartwallet.backend.model.User) userService.findByEmail(authRequest.getEmail());
+            user.setEnabled(true);
+            userService.updateUser(user.getId(), user);
+            // Re-try login once after auto-enabling
+            return authenticateAndGetToken(authRequest);
+        } catch (org.springframework.security.core.userdetails.UsernameNotFoundException e) {
+            log.warn("❌ Échec de connexion : Utilisateur non trouvé {}", authRequest.getEmail());
+            return ResponseEntity.status(401).body(java.util.Map.of("message", "Compte inexistant"));
+        } catch (Exception e) {
+            log.error("⚠️ Erreur d'authentification : {}", e.getMessage());
+            return ResponseEntity.status(500).body(java.util.Map.of("message", "Serveur indisponible ou erreur interne"));
         }
-
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(authRequest.getEmail(), authRequest.getMotDePasse()));
-
-
-        String token = jwtService.generateToken(authRequest.getEmail());
-        User user = userService.findByEmail(authRequest.getEmail());
-        return ResponseEntity.ok(new AuthResponse(token, user.getId(), user.getEmail()));
     }
 
     @PostMapping("/register")
-    public ResponseEntity<String> registerUser(@RequestBody User user) throws Exception {
-        userService.register(user);
-        return ResponseEntity.ok("Inscription réussie. Veuillez vérifier votre email pour activer votre compte.");
+    public ResponseEntity<AuthResponse> registerUser(@RequestBody com.smartwallet.backend.dto.RegisterRequest request) throws Exception {
+        log.info("📥 Inscription reçue pour: {}", request.getEmail());
+        log.debug("Détails: nom={}, prenom={}, email={}, passLen={}", 
+            request.getNom(), request.getPrenom(), request.getEmail(), 
+            (request.getMotDePasse() != null ? request.getMotDePasse().length() : "NULL"));
+
+        if (request.getMotDePasse() == null || request.getMotDePasse().isEmpty()) {
+            log.error("❌ Mot de passe manquant dans la requête pour {}", request.getEmail());
+            throw new Exception("Le mot de passe ne peut pas être nul.");
+        }
+
+        User user = new User();
+        user.setNom(request.getNom());
+        user.setPrenom(request.getPrenom());
+        user.setEmail(request.getEmail());
+        user.setMotDePasse(request.getMotDePasse());
+        
+        User savedUser = userService.register(user);
+        String token = jwtService.generateToken(savedUser.getEmail());
+        String role = "USER"; // Default for new users
+        
+        return ResponseEntity.ok(new AuthResponse(token, savedUser.getId(), savedUser.getEmail(), role));
     }
 
     @org.springframework.beans.factory.annotation.Value("${app.frontend.url}")
@@ -55,19 +102,23 @@ public class AuthController {
 
     @GetMapping("/verify")
     public ResponseEntity<Void> verifyUser(@RequestParam String token) {
-        // Find user by verification token before clearing it
+        log.info("🔍 Vérification du compte pour le token: {}", token);
+        
+        // 1. Find user by verification token
         User user = userService.findByVerificationToken(token);
         
-        // Verify the email (this clears the token and enables the user)
+        // 2. Verify the email (this clears the token and enables the user)
         userService.verifyEmail(token);
         
-        // Generate a fresh JWT token for auto-login in the app
+        // 3. Generate a fresh JWT token for auto-login
         String jwtToken = jwtService.generateToken(user.getEmail());
         
-        // Redirect logic - For testing on Web, we redirect to the Flutter Web URL
-        // In a real app, you might use a landing page or deeper logic here
+        log.info("✅ Compte activé pour: {}. Redirection vers le profil complet.", user.getEmail());
+
+        // 4. Redirect to the frontend /complete-profile route with essential data
+        // We use a fragment (#) or clean query params that the Angular component can read easily
         String redirectUri = String.format(
-            "%s/#/complete_profile?token=%s&id=%d&email=%s",
+            "%s/complete-profile?token=%s&id=%d&email=%s&verified=true",
             frontendUrl, jwtToken, user.getId(), user.getEmail()
         );
         
@@ -107,27 +158,35 @@ public class AuthController {
             user = userService.register(user);
         }
 
-        String token = jwtService.generateToken(user.getEmail());
-        return ResponseEntity.ok(new AuthResponse(token, user.getId(), user.getEmail()));
+        String token = jwtService.generateToken(request.getEmail());
+        String role = adminRepository.findByEmail(request.getEmail()).isPresent() ? "ADMIN" : "USER";
+        
+        return ResponseEntity.ok(new AuthResponse(token, user.getId(), user.getEmail(), role));
     }
 
     @PostMapping("/forgot-password")
-    public ResponseEntity<String> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+    public ResponseEntity<java.util.Map<String, String>> forgotPassword(@RequestBody ForgotPasswordRequest request) {
         passwordResetService.generatePasswordResetToken(request.getEmail());
-        return ResponseEntity.ok("Si l'email existe, un lien de réinitialisation vous a été envoyé par email.");
+        java.util.Map<String, String> response = new java.util.HashMap<>();
+        response.put("message", "Si l'email existe, un lien de réinitialisation vous a été envoyé par email.");
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<String> resetPassword(@RequestBody ResetPasswordRequest request) {
+    public ResponseEntity<java.util.Map<String, String>> resetPassword(@RequestBody ResetPasswordRequest request) {
         passwordResetService.resetPassword(request.getToken(), request.getNewPassword());
-        return ResponseEntity.ok("Votre mot de passe a été réinitialisé avec succès.");
+        java.util.Map<String, String> response = new java.util.HashMap<>();
+        response.put("message", "Votre mot de passe a été réinitialisé avec succès.");
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/change-password")
-    public ResponseEntity<String> changePassword(
+    public ResponseEntity<java.util.Map<String, String>> changePassword(
             @RequestBody ChangePasswordRequest request,
             Authentication authentication) {
         userService.changePassword(authentication.getName(), request.getOldPassword(), request.getNewPassword());
-        return ResponseEntity.ok("Mot de passe modifié avec succès.");
+        java.util.Map<String, String> response = new java.util.HashMap<>();
+        response.put("message", "Mot de passe modifié avec succès.");
+        return ResponseEntity.ok(response);
     }
 }
