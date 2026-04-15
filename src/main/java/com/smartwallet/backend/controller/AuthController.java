@@ -73,7 +73,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> registerUser(@RequestBody com.smartwallet.backend.dto.RegisterRequest request) throws Exception {
+    public ResponseEntity<java.util.Map<String, Object>> registerUser(@RequestBody com.smartwallet.backend.dto.RegisterRequest request) throws Exception {
         log.info("📥 Inscription reçue pour: {}", request.getEmail());
         log.debug("Détails: nom={}, prenom={}, email={}, passLen={}", 
             request.getNom(), request.getPrenom(), request.getEmail(), 
@@ -92,9 +92,15 @@ public class AuthController {
         
         User savedUser = userService.register(user);
         String token = jwtService.generateToken(savedUser.getEmail());
-        String role = "USER"; // Default for new users
-        
-        return ResponseEntity.ok(new AuthResponse(token, savedUser.getId(), savedUser.getEmail(), role));
+
+        java.util.Map<String, Object> response = new java.util.HashMap<>();
+        response.put("message", "Inscription réussie. Veuillez vérifier votre email pour activer votre compte.");
+        response.put("id", savedUser.getId());
+        response.put("nom", savedUser.getNom());
+        response.put("prenom", savedUser.getPrenom());
+        response.put("email", savedUser.getEmail());
+        response.put("token", token);
+        return ResponseEntity.ok(response);
     }
 
     @org.springframework.beans.factory.annotation.Value("${app.frontend.url}")

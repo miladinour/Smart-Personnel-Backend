@@ -44,6 +44,10 @@ public class UserService implements UserDetailsService {
     @Autowired
     private EmailService emailService;
 
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private UserInitializationService userInitializationService;
+
     @Value("${app.server.url}")
     private String serverUrl;
 
@@ -86,10 +90,9 @@ public class UserService implements UserDetailsService {
         user.setVerificationToken(token);
 
         User savedUser = userRepository.save(user);
-        ensureDefaultCategories(savedUser);
         
-        // Send Premium Verification Email
-        // emailService.sendVerificationEmail(savedUser, token, serverUrl);
+        // Démarrer l'initialisation (catégories + email) en arrière-plan sans bloquer
+        userInitializationService.initializeNewUser(savedUser, token, serverUrl);
         
         return savedUser;
     }
@@ -109,31 +112,6 @@ public class UserService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("Utilisateur non trouvé avec ce token."));
     }
 
-    private void ensureDefaultCategories(User user) {
-        String[][] categories = {
-                { "Alimentation", "DEPENSE" },
-                { "Transport", "DEPENSE" },
-                { "Loisirs", "DEPENSE" },
-                { "Santé", "DEPENSE" },
-                { "Shopping", "DEPENSE" },
-                { "Logement", "DEPENSE" },
-                { "Autre", "DEPENSE" },
-                { "Salaire", "REVENU" },
-                { "Cadeau", "REVENU" },
-                { "Autre", "REVENU" }
-        };
-
-        for (String[] cat : categories) {
-            if (categorieRepository.findByNomAndUser(cat[0], user).isEmpty()) {
-                com.smartwallet.backend.model.Categorie c = new com.smartwallet.backend.model.Categorie();
-                c.setNom(cat[0]);
-                c.setType(cat[1]);
-                c.setUser(user);
-                c.setSystemCategory(true);
-                categorieRepository.save(c);
-            }
-        }
-    }
 
     public User updateUser(Long id, User userDetails) {
         User user = findById(id);

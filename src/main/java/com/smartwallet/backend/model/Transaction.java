@@ -8,7 +8,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.io.Serializable;
 
-
 @Entity
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
 @DiscriminatorColumn(name = "transaction_type", discriminatorType = DiscriminatorType.STRING)
@@ -25,7 +24,6 @@ public abstract class Transaction implements Serializable {
     private BigDecimal montant;
 
     private String description;
-
 
     @Column(name = "date")
     private LocalDateTime date;

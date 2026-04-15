@@ -12,4 +12,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     void deleteByUser(User user);
 
     java.util.List<Transaction> findByUserOrderByDateDesc(User user);
+
+    java.util.Optional<Transaction> findTopByDescriptionContainingIgnoreCaseAndUserOrderByDateDesc(String description, User user);
+    java.util.Optional<Transaction> findTopByDescriptionIgnoreCaseAndUserOrderByDateDesc(String description, User user);
 }

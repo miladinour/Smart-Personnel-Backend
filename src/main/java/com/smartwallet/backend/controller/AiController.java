@@ -26,7 +26,21 @@ public class AiController {
     private final AiRecommendationService aiRecommendationService;
     private final AiForecastService aiForecastService;
     private final AiCommandService aiCommandService;
+    private final com.smartwallet.backend.service.AiCategorizationService aiCategorizationService;
     private final UserService userService;
+
+    @PostMapping("/suggest-category")
+    public ResponseEntity<java.util.Map<String, String>> suggestCategory(@RequestBody java.util.Map<String, String> request, Authentication authentication) {
+        User user = userService.findByEmail(authentication.getName());
+        String text = request.get("text");
+        String type = request.getOrDefault("type", "DEPENSE");
+        
+        com.smartwallet.backend.model.Categorie cat = aiCategorizationService.categorize(text, type, user);
+        
+        java.util.Map<String, String> response = new java.util.HashMap<>();
+        response.put("category", cat.getNom());
+        return ResponseEntity.ok(response);
+    }
 
     @PostMapping("/process-command")
     public ResponseEntity<AiCommandResponse> processCommand(@RequestBody AiCommandRequest request, Authentication authentication) {
