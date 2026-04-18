@@ -84,7 +84,7 @@ public class UserService implements UserDetailsService {
             throw new Exception("Cet email est deja utilise.");
         }
         user.setMotDePasse(passwordEncoder.encode(user.getMotDePasse()));
-        user.setEnabled(true); // Enabled by default for easier development/testing
+        user.setEnabled(false); // Changé à false pour forcer la vérification par email
         
         String token = UUID.randomUUID().toString();
         user.setVerificationToken(token);
@@ -197,6 +197,13 @@ public class UserService implements UserDetailsService {
     public void updateResetInterval(Long userId, String interval) {
         User user = findById(userId);
         user.setResetInterval(interval);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void setPasswordDirect(Long userId, String newPassword) {
+        User user = findById(userId);
+        user.setMotDePasse(passwordEncoder.encode(newPassword));
         userRepository.save(user);
     }
 }
