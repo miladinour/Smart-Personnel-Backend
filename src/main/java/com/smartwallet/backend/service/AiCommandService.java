@@ -174,6 +174,7 @@ public class AiCommandService {
             if (description.isEmpty()) description = (type.equals("REVENU") ? "Revenu" : "Dépense");
             else description = Character.toUpperCase(description.charAt(0)) + description.substring(1);
 
+            System.out.println(">>> [DEBUG] Final description sent to AI: '" + description + "'");
             Categorie cat = aiCategorizationService.categorize(description, type, user);
             
             AiCommandResponse res = new AiCommandResponse();

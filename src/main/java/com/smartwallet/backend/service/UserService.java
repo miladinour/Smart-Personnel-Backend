@@ -51,9 +51,8 @@ public class UserService implements UserDetailsService {
     @Value("${app.server.url}")
     private String serverUrl;
 
-    @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findByEmailIgnoreCase(email.trim())
                 .orElseThrow(() -> new UsernameNotFoundException("Utilisateur non trouvé avec l'email: " + email));
 
         return org.springframework.security.core.userdetails.User.builder()
@@ -65,7 +64,7 @@ public class UserService implements UserDetailsService {
     }
 
     public User findByEmail(String email) {
-        return userRepository.findByEmail(email)
+        return userRepository.findByEmailIgnoreCase(email.trim())
                 .orElseThrow(() -> new UsernameNotFoundException("Utilisateur non trouvé avec l'email: " + email));
     }
 
@@ -80,9 +79,11 @@ public class UserService implements UserDetailsService {
 
     @Transactional
     public User register(User user) throws Exception {
-        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
+        String normalizedEmail = user.getEmail().trim().toLowerCase();
+        if (userRepository.findByEmailIgnoreCase(normalizedEmail).isPresent()) {
             throw new Exception("Cet email est deja utilise.");
         }
+        user.setEmail(normalizedEmail);
         user.setMotDePasse(passwordEncoder.encode(user.getMotDePasse()));
         user.setEnabled(true); // Enabled by default for easier development/testing
         
