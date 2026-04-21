@@ -16,19 +16,31 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class PasswordResetService {
 
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
-    @Value("${app.frontend.url}")
-    private String frontendUrl;
+    private final String frontendUrl;
+
+    public PasswordResetService(
+            UserRepository userRepository,
+            PasswordResetTokenRepository passwordResetTokenRepository,
+            EmailService emailService,
+            PasswordEncoder passwordEncoder,
+            @Value("${app.frontend.url}") String frontendUrl) {
+        this.userRepository = userRepository;
+        this.passwordResetTokenRepository = passwordResetTokenRepository;
+        this.emailService = emailService;
+        this.passwordEncoder = passwordEncoder;
+        this.frontendUrl = frontendUrl;
+    }
 
     @Transactional
     public void generatePasswordResetToken(String email) {
-        Optional<User> userOptional = userRepository.findByEmail(email);
+        String normalizedEmail = email != null ? email.toLowerCase().trim() : null;
+        Optional<User> userOptional = userRepository.findByEmail(normalizedEmail);
 
         if (userOptional.isPresent()) {
             User user = userOptional.get();
@@ -45,15 +57,7 @@ public class PasswordResetService {
             // Save token to database
             passwordResetTokenRepository.save(passwordResetToken);
 
-            // Send email
-            String resetLink = frontendUrl + "/reset-password?token=" + token;
-            String emailBody = "Vous avez demandé la réinitialisation de votre mot de passe.\n\n"
-                    + "Veuillez cliquer sur le lien ci-dessous pour le réinitialiser :\n"
-                    + resetLink + "\n\n"
-                    + "Ce lien expirera dans 1 heure.\n\n"
-                    + "Si vous n'avez pas fait cette demande, veuillez ignorer cet e-mail.";
-
-            emailService.sendEmail(user.getEmail(), "Réinitialisation de votre mot de passe", emailBody);
+            emailService.sendPasswordResetEmail(user, token, frontendUrl);
         }
     }
 

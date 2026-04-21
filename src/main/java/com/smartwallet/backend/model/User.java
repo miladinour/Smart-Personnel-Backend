@@ -98,7 +98,7 @@ public class User extends Personne implements UserDetails {
     }
 
     @Override
-    @JsonIgnore
+    @com.fasterxml.jackson.annotation.JsonProperty("enabled")
     public boolean isEnabled() {
         return enabled;
     }
