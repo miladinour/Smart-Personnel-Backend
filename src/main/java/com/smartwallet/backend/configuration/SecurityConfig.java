@@ -27,6 +27,9 @@ public class SecurityConfig {
     private JwtAuthFilter jwtAuthFilter;
 
     @Autowired
+    private com.smartwallet.backend.filter.MaintenanceFilter maintenanceFilter;
+
+    @Autowired
     private UserDetailsService userDetailsService;
 
     @Value("${app.frontend.url}")
@@ -72,6 +75,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
+                .addFilterBefore(maintenanceFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
