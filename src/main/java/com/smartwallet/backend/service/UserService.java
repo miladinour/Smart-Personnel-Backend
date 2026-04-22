@@ -20,6 +20,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import java.util.List;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
+import javax.naming.directory.DirContext;
+import javax.naming.directory.InitialDirContext;
+import java.util.Hashtable;
 
 @Service
 public class UserService implements UserDetailsService {
@@ -51,7 +56,6 @@ public class UserService implements UserDetailsService {
     @Value("${app.server.url}")
     private String serverUrl;
 
-    @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
         String normalizedEmail = email != null ? email.toLowerCase().trim() : null;
         User user = userRepository.findByEmail(normalizedEmail)
@@ -81,9 +85,14 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
-    public User register(User user) throws Exception {
+    public User register(User user, String currentServerUrl) throws Exception {
         if (user.getEmail() != null) {
             user.setEmail(user.getEmail().toLowerCase().trim());
+        }
+        
+        // Validation de l'existence du domaine de l'email
+        if (!isEmailDomainValid(user.getEmail())) {
+            throw new Exception("désolé cette email n'existe pas , veuillez entrer un email existe");
         }
         
         if (userRepository.findByEmail(user.getEmail()).isPresent()) {
@@ -97,8 +106,13 @@ public class UserService implements UserDetailsService {
 
         User savedUser = userRepository.save(user);
         
+        // Utiliser l'URL dynamique si fournie, sinon repli sur la config par défaut
+        String finalServerUrl = (currentServerUrl != null && !currentServerUrl.isEmpty()) 
+                               ? currentServerUrl 
+                               : serverUrl;
+
         // Démarrer l'initialisation (catégories + email) en arrière-plan sans bloquer
-        userInitializationService.initializeNewUser(savedUser, token, serverUrl);
+        userInitializationService.initializeNewUser(savedUser, token, finalServerUrl);
         
         return savedUser;
     }
@@ -152,11 +166,7 @@ public class UserService implements UserDetailsService {
     public void deleteUser(Long id) {
         User user = findById(id);
 
-        // Supprimer les tokens de réinitialisation liés à l'utilisateur
         passwordResetTokenRepository.deleteByUser(user);
-
-        // Supprimer l'utilisateur (et la ligne parente dans personne grâce à
-        // @Transactional)
         userRepository.delete(user);
     }
 
@@ -212,5 +222,21 @@ public class UserService implements UserDetailsService {
         User user = findById(userId);
         user.setMotDePasse(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+    }
+
+    private boolean isEmailDomainValid(String email) {
+        if (email == null || !email.contains("@")) return false;
+        try {
+            String domain = email.substring(email.indexOf('@') + 1);
+            Hashtable<String, String> env = new Hashtable<>();
+            env.put("java.naming.factory.initial", "com.sun.jndi.dns.DnsContextFactory");
+            DirContext ictx = new InitialDirContext(env);
+            Attributes attrs = ictx.getAttributes(domain, new String[] { "MX" });
+            Attribute attr = attrs.get("MX");
+            return (attr != null && attr.size() > 0);
+        } catch (Exception e) {
+            // Si le check DNS échoue ou pas de MX records, on considère le domaine comme suspect/inexistant
+            return false;
+        }
     }
 }

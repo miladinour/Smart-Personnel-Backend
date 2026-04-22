@@ -57,8 +57,10 @@ public class AiCategorizationService {
         // --- NIVEAU 1 : MOTS-CLÉS (Instantané) ---
         Categorie fromKeywords = checkKeywords(desc, type, user);
         if (fromKeywords != null) {
-            System.out.println(">>> [AiCategorization] Level 1 (Keywords) hit: " + fromKeywords.getNom());
+            System.out.println(">>> [DEBUG] Level 1 MATCH FOUND: " + fromKeywords.getNom() + " (ID: " + fromKeywords.getId() + ")");
             return fromKeywords;
+        } else {
+            System.out.println(">>> [DEBUG] Level 1 NO MATCH for: " + desc);
         }
 
         // --- NIVEAU 2 : MÉMOIRE / HISTORIQUE EXACT (Local) ---
@@ -76,7 +78,7 @@ public class AiCategorizationService {
             System.err.println(">>> [AiCategorization] Level 2 Error: " + e.getMessage());
         }
 
-        List<Categorie> allCats = categorieRepository.findByUser(user);
+        List<Categorie> allCats = categorieRepository.findByUserOrUserIsNull(user);
 
         // --- NIVEAU 3 : SIMILARITÉ MATHÉMATIQUE STRICTE (Dice) - Local ---
         Categorie similar = findBestMatchingCategory(text, allCats);
@@ -86,21 +88,21 @@ public class AiCategorizationService {
         }
 
         // --- NIVEAU 4 : IA LOCALE (Ollama) - Local ---
+        String catName = null;
         if ("OLLAMA".equalsIgnoreCase(llmProvider)) {
-            System.out.println(">>> [AiCategorization] Attempting Level 4 (Ollama)...");
-            String catName = callOllama(text, type, allCats);
-            if (catName != null && !catName.isBlank() && !"Autre".equalsIgnoreCase(catName)) {
-                System.out.println(">>> [AiCategorization] Level 4 (Ollama) SUCCESS: " + catName);
-                return findOrCreateCategory(catName, user, type);
-            }
-            System.out.println(">>> [AiCategorization] Level 4 (Ollama) failed or returned 'Autre'");
+            System.out.println(">>> [AiCategorization] Level 4 (Ollama) attempt...");
+            catName = callOllama(text, type, allCats);
         }
 
-        // --- FALLBACK FACULTATIF : GEMINI (Cloud) ---
-        if (geminiApiKey != null && !geminiApiKey.isBlank() && !"OLLAMA".equalsIgnoreCase(llmProvider)) {
-            System.out.println(">>> [AiCategorization] Attempting Fallback (Gemini)...");
-            String catName = callGemini(text, type, allCats);
-            if (catName != null && !catName.isBlank()) return findOrCreateCategory(catName, user, type);
+        // --- NIVEAU 5 : IA CLOUD (Gemini) - Fallback si Ollama échoue ou est désactivé ---
+        if ((catName == null || "Autre".equalsIgnoreCase(catName)) && geminiApiKey != null && !geminiApiKey.isBlank()) {
+            System.out.println(">>> [AiCategorization] Level 5 (Gemini Fallback) attempt...");
+            catName = callGemini(text, type, allCats);
+        }
+
+        if (catName != null && !catName.isBlank() && !"Autre".equalsIgnoreCase(catName)) {
+            System.out.println(">>> [AiCategorization] AI Success: " + catName);
+            return findOrCreateCategory(catName, user, type);
         }
 
         System.out.println(">>> [AiCategorization] All levels failed. Defaulting to 'Autre'");
@@ -108,26 +110,35 @@ public class AiCategorizationService {
     }
 
     private Categorie checkKeywords(String desc, String type, User user) {
-        if ("REVENU".equalsIgnoreCase(type) || matches(desc, "salaire", "revenu", "gain", "reçu", "virement", "bonus", "intérêt")) {
-            return findOrCreateCategory("Salaire", user, "REVENU");
+        if (matches(desc, "cadeau", "fleur", "bouquet", "anniversaire", "fête", "don", "mariage", "naissance", "fleurs", "maman", "mama")) {
+            return findOrCreateCategory("Cadeau", user, "DEPENSE");
         }
         if (matches(desc, "monoprix", "carrefour", "mg", "restau", "manger", "viande", "boulangerie", "lait", "pain", "pizza", "café", "alimentation", "épicerie", "fruits", "légumes", "kfc", "mac", "food", "lidl", "supermarché", "monoprix")) {
             return findOrCreateCategory("Alimentation", user, "DEPENSE");
         }
-        if (matches(desc, "taxi", "bolt", "essence", "carburant", "gasoil", "parking", "peage", "bus", "train", "transport", "voiture")) {
+        if (matches(desc, "taxi", "bolt", "essence", "carburant", "gasoil", "sans plomb", "95", "98", "diesel", "parking", "peage", "bus", "train", "transport", "voiture")) {
             return findOrCreateCategory("Transport", user, "DEPENSE");
         }
-        if (matches(desc, "chaussure", "habit", "vêtement", "shopping", "pull", "chemise", "boutique", "mode", "beauté", "cosmétique", "coiffeur", "barbier", "salon", "basket", "paire", "sneakers", "talon", "marque")) {
+        if (matches(desc, "chaussure", "habit", "vêtement", "shopping", "pull", "chemise", "boutique", "mode", "basket", "paire", "sneakers", "talon", "marque")) {
             return findOrCreateCategory("Shopping", user, "DEPENSE");
         }
         if (matches(desc, "pharma", "médicament", "dentiste", "santé", "hôpital", "soin", "cardiologue", "ophtalmo", "clinique", "médecin", "docteur", "analyse")) {
             return findOrCreateCategory("Santé", user, "DEPENSE");
         }
-        if (matches(desc, "steg", "sonede", "loyer", "internet", "telecom", "ooredoo", "orange", "topnet", "électricité", "facture", "eau", "steg", "gaz")) {
-            return findOrCreateCategory("Logement & Factures", user, "DEPENSE");
+        if (matches(desc, "steg", "sonede", "loyer", "internet", "telecom", "ooredoo", "orange", "topnet", "électricité", "facture", "eau", "steg", "gaz", "menuiserie", "bricolage", "meuble", "réparation")) {
+            return findOrCreateCategory("Logement", user, "DEPENSE");
         }
-        if (matches(desc, "cinéma", "netflix", "spotify", "cadeau", "sport", "salle", "club", "vacances", "voyage", "abonnement", "loisirs")) {
+        if (matches(desc, "cinéma", "netflix", "spotify", "cadeau", "sport", "salle", "club", "vacances", "voyage", "abonnement", "loisirs", "disney", "prime")) {
             return findOrCreateCategory("Loisirs", user, "DEPENSE");
+        }
+        if (matches(desc, "coiffeur", "barbier", "beauté", "cosmétique", "soin", "esthétique")) {
+            return findOrCreateCategory("Beauté", user, "DEPENSE");
+        }
+        if (matches(desc, "croquettes", "chat", "chien", "vétérinaire", "animalerie")) {
+            return findOrCreateCategory("Animaux", user, "DEPENSE");
+        }
+        if (matches(desc, "amende", "radar", "pénalité", "pv")) {
+            return findOrCreateCategory("Amende", user, "DEPENSE");
         }
         return null;
     }
@@ -137,7 +148,7 @@ public class AiCategorizationService {
         Categorie bestMatch = null;
         for (Categorie cat : categories) {
             double score = diceCoefficient(text.toLowerCase(), cat.getNom().toLowerCase());
-            if (score > 0.35 && score > bestScore) {
+            if (score > 0.70 && score > bestScore) { // Seuil augmenté de 0.35 à 0.70 pour plus de précision
                 bestScore = score;
                 bestMatch = cat;
             }
@@ -168,15 +179,19 @@ public class AiCategorizationService {
             
             System.out.println(">>> [Ollama] Pro mode - Analyzing '" + text + "'");
             
-            // Forcer l'IA à répondre en UN SEUL MOT et en Français
-            String prompt = "Classify this expense in French: \"" + text + "\"\n" +
-                           "Options: " + cats + "\n" +
-                           "Answer with ONE SINGLE WORD (the best category).";
+            // Format de prompt "Pédagogique" pour Phi-3
+            String prompt = "Tu es un assistant financier. Classe cette dépense : '" + text + "'.\n" +
+                           "Options : " + cats + ", Autre\n\n" +
+                           "RÈGLES :\n" +
+                           "1. Choisis la catégorie la plus LOGIQUE.\n" +
+                           "2. Si le texte est du charabia ou n'a aucun sens comme 'truc', 'bidule' ou 'azerty', réponds UNIQUEMENT 'Autre'.\n" +
+                           "3. Réponds par UN SEUL MOT.\n\n" +
+                           "Réponse :";
 
             Map<String, Object> options = Map.of(
                 "temperature", 0.0,
-                "num_predict", 5,      // Très court : juste un mot
-                "num_ctx",    2048,
+                "num_predict", 8,      
+                "num_ctx",    1024,
                 "top_k",      1
             );
 
@@ -200,9 +215,22 @@ public class AiCategorizationService {
             if (response.statusCode() == 200) {
                 JsonNode root = objectMapper.readTree(response.body());
                 String res = root.path("response").asText().trim();
-                System.out.println(">>> [Ollama] Response: " + res);
-                if (res.contains("\n")) res = res.substring(0, res.indexOf("\n")).trim();
-                return res.replaceAll("[^a-zA-Z\u00C0-\u024F &]", "").trim();
+                System.out.println(">>> [Ollama] Raw Response: " + res);
+                
+                // Nettoyage agressif : on prend le premier mot
+                if (res.contains(" ")) res = res.split(" ")[0];
+                if (res.contains("\n")) res = res.split("\n")[0];
+                res = res.replaceAll("[^a-zA-Z\u00C0-\u024F]", "").trim();
+                
+                // LOGIQUE PRO : Avant de créer une nouvelle catégorie, on cherche si un match existe déjà 
+                // même si l'IA a fait une petite faute de frappe ou a répondu différemment.
+                for (Categorie cat : existing) {
+                    if (diceCoefficient(res.toLowerCase(), cat.getNom().toLowerCase()) > 0.7) {
+                        return cat.getNom();
+                    }
+                }
+                
+                return res;
             }
         } catch (Exception e) {
             System.err.println(">>> [AiCategorization] Ollama failed: " + e.getMessage());
@@ -231,18 +259,26 @@ public class AiCategorizationService {
     }
 
     private boolean matches(String text, String... keywords) {
+        if (text == null || text.isBlank()) return false;
         String lowerText = text.toLowerCase().trim();
+
         for (String k : keywords) {
-            String lowerK = k.toLowerCase();
-            // 1. Recherche avec frontières de mots pour éviter 'eau' dans 'bureau'
-            if (lowerText.matches(".*\\b" + Pattern.quote(lowerK) + "\\b.*")) {
-                System.out.println(">>> [Keywords] Exact word match found: '" + lowerK + "' in '" + lowerText + "'");
-                return true;
-            }
+            String lowerK = k.toLowerCase().trim();
             
-            // 2. Recherche par similarité STRICTE (pour éviter les faux positifs)
-            if (diceCoefficient(lowerText, lowerK) > 0.85) { // Seuil augmenté de 0.8 à 0.85
-                System.out.println(">>> [Keywords] Strict similarity match: '" + lowerK + "' with '" + lowerText + "'");
+            boolean matched = false;
+            if (lowerK.length() <= 4) {
+                if (lowerText.matches(".*\\b" + Pattern.quote(lowerK) + "\\b.*")) {
+                    if (!lowerText.equals("achat") && !lowerText.equals("le") && !lowerText.equals("un")) {
+                        matched = true;
+                    }
+                }
+            } else {
+                if (lowerText.contains(lowerK)) matched = true;
+                else if (diceCoefficient(lowerText, lowerK) > 0.80) matched = true;
+            }
+
+            if (matched) {
+                System.out.println(">>> [DEBUG] KEYWORD MATCH: '" + lowerK + "' found in '" + lowerText + "'");
                 return true;
             }
         }
@@ -255,13 +291,19 @@ public class AiCategorizationService {
     }
 
     private Categorie findOrCreateCategory(String nom, User user, String type) {
-        return categorieRepository.findByUser(user).stream()
-                .filter(c -> c.getNom().equalsIgnoreCase(nom))
+        // On cherche d'abord dans les catégories de l'utilisateur ET les catégories système (user is null)
+        return categorieRepository.findByUserOrUserIsNull(user).stream()
+                .filter(c -> c.getNom().trim().equalsIgnoreCase(nom.trim()))
                 .findFirst()
                 .orElseGet(() -> {
-                    Categorie newCat = new Categorie(Character.toUpperCase(nom.charAt(0)) + nom.substring(1).toLowerCase());
+                    String cleanNom = nom.trim();
+                    String capitalizedNom = Character.toUpperCase(cleanNom.charAt(0)) + cleanNom.substring(1).toLowerCase();
+                    System.out.println(">>> [AiCategorization] Creating NEW category for user: " + capitalizedNom);
+                    Categorie newCat = new Categorie();
+                    newCat.setNom(capitalizedNom);
                     newCat.setUser(user);
                     newCat.setType(type != null ? type.toUpperCase() : "DEPENSE");
+                    newCat.setSystemCategory(false);
                     return categorieRepository.save(newCat);
                 });
     }

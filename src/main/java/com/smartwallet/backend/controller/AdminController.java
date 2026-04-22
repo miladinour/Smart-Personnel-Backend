@@ -6,6 +6,8 @@ import com.smartwallet.backend.service.UserService;
 import com.smartwallet.backend.repository.AdminRepository;
 import com.smartwallet.backend.repository.AuditLogRepository;
 import com.smartwallet.backend.repository.TransactionRepository;
+import com.smartwallet.backend.repository.SystemSettingRepository;
+import com.smartwallet.backend.model.SystemSetting;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -23,6 +25,7 @@ public class AdminController {
     private final AdminRepository adminRepository;
     private final TransactionRepository transactionRepository;
     private final AuditLogRepository auditLogRepository;
+    private final SystemSettingRepository systemSettingRepository;
 
     private boolean isAdmin(Authentication authentication) {
         return adminRepository.findByEmail(authentication.getName()).isPresent();
@@ -55,14 +58,20 @@ public class AdminController {
         // Perform the update
         userService.updateUserStatus(id, enabled);
 
-        // Record a real audit trace
-        AuditLog log = new AuditLog(
-            authentication.getName(),
-            enabled ? "Activation du compte utilisateur" : "Désactivation du compte utilisateur",
-            targetEmail,
-            enabled ? "SUCCES" : "AVERTISSEMENT"
-        );
-        auditLogRepository.save(log);
+        // Record a real audit trace ONLY if audit tracing is enabled
+        boolean auditEnabled = systemSettingRepository.findBySettingKey("AUDIT_TRACING")
+                .map(s -> "true".equalsIgnoreCase(s.getSettingValue()))
+                .orElse(true); // Default to true if not set yet
+
+        if (auditEnabled) {
+            AuditLog log = new AuditLog(
+                authentication.getName(),
+                enabled ? "Activation du compte utilisateur" : "Désactivation du compte utilisateur",
+                targetEmail,
+                enabled ? "SUCCES" : "AVERTISSEMENT"
+            );
+            auditLogRepository.save(log);
+        }
 
         return ResponseEntity.ok(Map.of("message", "Statut mis à jour avec succès."));
     }
@@ -142,5 +151,52 @@ public class AdminController {
             .collect(Collectors.toList());
 
         return ResponseEntity.ok(result);
+    }
+
+    // ─── SYSTEM SETTINGS ───────────────────────────────────────────────────────
+    @GetMapping("/settings")
+    public ResponseEntity<?> getSettings(Authentication authentication) {
+        if (!isAdmin(authentication)) return ResponseEntity.status(403).build();
+        
+        List<SystemSetting> settings = systemSettingRepository.findAll();
+        Map<String, String> resultMap = settings.stream()
+                .collect(Collectors.toMap(SystemSetting::getSettingKey, SystemSetting::getSettingValue));
+        
+        // Ensure defaults exist in response if not in DB
+        resultMap.putIfAbsent("MAINTENANCE_MODE", "false");
+        resultMap.putIfAbsent("AUDIT_TRACING", "true");
+        
+        return ResponseEntity.ok(resultMap);
+    }
+
+    @PutMapping("/settings/{key}")
+    public ResponseEntity<?> updateSetting(
+            @PathVariable String key,
+            @RequestParam String value,
+            Authentication authentication) {
+        if (!isAdmin(authentication)) return ResponseEntity.status(403).build();
+
+        SystemSetting setting = systemSettingRepository.findBySettingKey(key)
+                .orElse(new SystemSetting(key, value));
+        
+        setting.setSettingValue(value);
+        systemSettingRepository.save(setting);
+
+        // Add to audit log that a setting was changed (this is a critical action, always log if possible or follow flag)
+        boolean auditEnabled = systemSettingRepository.findBySettingKey("AUDIT_TRACING")
+                .map(s -> "true".equalsIgnoreCase(s.getSettingValue()))
+                .orElse(true);
+
+        if (auditEnabled) {
+            AuditLog log = new AuditLog(
+                authentication.getName(),
+                "Modification paramètre système : " + key,
+                "Valeur: " + value,
+                "INFO"
+            );
+            auditLogRepository.save(log);
+        }
+
+        return ResponseEntity.ok(Map.of("message", "Paramètre mis à jour"));
     }
 }

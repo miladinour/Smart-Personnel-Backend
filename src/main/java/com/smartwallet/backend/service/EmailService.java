@@ -46,7 +46,7 @@ public class EmailService {
         // ✅ Le bouton pointe vers /api/auth/activate (URL HTTPS normale)
         // Le backend active le compte puis redirige vers smartwallet://
         // Gmail et tous les clients email acceptent les liens HTTPS normaux
-        String activationLink = cleanServerUrl + "/api/auth/verify"
+        String activationLink = cleanServerUrl + "/api/auth/activate"
                 + "?token=" + token
                 + "&id=" + user.getId()
                 + "&email=" + user.getEmail()

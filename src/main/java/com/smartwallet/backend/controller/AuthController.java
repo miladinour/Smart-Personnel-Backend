@@ -15,6 +15,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.io.IOException;
 
 @Slf4j
@@ -88,12 +90,19 @@ public class AuthController {
             if (request.getMotDePasse() == null || request.getMotDePasse().isEmpty()) {
                 return ResponseEntity.status(400).body(java.util.Map.of("message", "Le mot de passe est obligatoire."));
             }
+
+            // Détecter l'URL de base dynamiquement
+            String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
+            log.info("🌐 URL de base détectée : {}", baseUrl);
+
             User user = new User();
             user.setNom(request.getNom());
             user.setPrenom(request.getPrenom());
             user.setEmail(request.getEmail());
             user.setMotDePasse(request.getMotDePasse());
-            User savedUser = userService.register(user);
+            
+            User savedUser = userService.register(user, baseUrl);
+            
             String token = jwtService.generateToken(savedUser.getEmail());
             java.util.Map<String, Object> response = new java.util.HashMap<>();
             response.put("message", "Inscription réussie. Veuillez vérifier votre email pour activer votre compte.");
@@ -218,7 +227,9 @@ public class AuthController {
             }
             if (request.getPhotoUrl() != null)
                 user.setPhotoProfil(request.getPhotoUrl());
-            user = userService.register(user);
+            
+            String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
+            user = userService.register(user, baseUrl);
         }
         String token = jwtService.generateToken(request.getEmail());
         String role = adminRepository.findByEmail(request.getEmail()).isPresent() ? "ADMIN" : "USER";
@@ -246,7 +257,12 @@ public class AuthController {
 
     @PostMapping("/forgot-password")
     public ResponseEntity<java.util.Map<String, String>> forgotPassword(@RequestBody ForgotPasswordRequest request) {
-        passwordResetService.generatePasswordResetToken(request.getEmail());
+        // Pour le reset, on utilise aussi l'URL de base détectée. 
+        // Si le frontend est sur un autre port, on pourrait avoir besoin de le configurer, 
+        // mais utiliser l'hôte actuel est déjà un grand progrès par rapport à l'IP locale codée en dur.
+        String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
+        
+        passwordResetService.generatePasswordResetToken(request.getEmail(), baseUrl);
         return ResponseEntity
                 .ok(java.util.Map.of("message", "Si l'email existe, un lien de réinitialisation vous a été envoyé."));
     }
