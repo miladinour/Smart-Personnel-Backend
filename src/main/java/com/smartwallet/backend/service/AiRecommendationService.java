@@ -19,6 +19,7 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.Optional;
 
 @Service
@@ -52,21 +53,21 @@ public class AiRecommendationService {
             // 1b. Balance Check (Success or Danger) - ONLY IF NOT NEW
             if (totalDepenses.compareTo(totalRevenus) > 0 && totalRevenus.compareTo(BigDecimal.ZERO) > 0) {
                 recommendations.add(new AiRecommendation(
-                    "Oups, Solde N\u00E9gatif",
-                    "Ce mois-ci, vos d\u00E9penses d\u00E9passent vos revenus.",
+                    "ai.rec.negative_balance_title",
+                    "ai.rec.negative_balance_message",
                     "danger",
                     "Global",
-                    "Votre balance est actuellement n\u00E9gative. Pas de panique ! Essayez de limiter les achats 'plaisir' sur les prochains jours pour r\u00E9tablir l'\u00E9quilibre.",
+                    "ai.rec.negative_balance_explanation",
                     false,
                     null
                 ));
             } else if (totalRevenus.compareTo(BigDecimal.ZERO) > 0) {
                 recommendations.add(new AiRecommendation(
-                    "Balance Positive !",
-                    "F\u00E9licitations, vous g\u00E9rez parfaitement votre budget.",
+                    "ai.rec.positive_balance_title",
+                    "ai.rec.positive_balance_message",
                     "success",
                     "Global",
-                    "C'est la base d'une bonne sant\u00E9 financi\u00E8re. Vous pourriez allouer une partie de ce surplus \u00E0 l'un de vos objectifs d'\u00E9pargne.",
+                    "ai.rec.positive_balance_explanation",
                     false,
                     null
                 ));
@@ -78,7 +79,7 @@ public class AiRecommendationService {
         budgetRepository.findByUser(user).stream()
             .filter(b -> !b.getDateDebut().isAfter(today) && !b.getDateFin().isBefore(today))
             .forEach(budget -> {
-                String catName = budget.getCategorie() != null ? budget.getCategorie().getNom() : "G\u00E9n\u00E9ral";
+                String catName = budget.getCategorie() != null ? budget.getCategorie().getNom() : "Général";
                 BigDecimal limit = budget.getMontantLimite();
                 
                 List<Depense> deps = depenseService.getDepensesByUser(user, 
@@ -89,25 +90,31 @@ public class AiRecommendationService {
                 BigDecimal spent = deps.stream().map(Depense::getMontant).reduce(BigDecimal.ZERO, BigDecimal::add);
                 boolean hasActiveDefi = activeDefis.stream().anyMatch(d -> d.getCategorieCible().equalsIgnoreCase(catName));
 
+                Map<String, String> budgetParams = new HashMap<>();
+                budgetParams.put("category", catName);
+                budgetParams.put("limit", limit.toString());
+
                 if (spent.compareTo(limit) >= 0) {
                     recommendations.add(new AiRecommendation(
-                        "Budget de " + catName + " Atteint",
-                        "Vous avez atteint votre limite de " + limit + " pour cette cat\u00E9gorie.",
+                        "ai.rec.budget_reached_title",
+                        "ai.rec.budget_reached_message",
                         "danger",
                         catName,
-                        hasActiveDefi ? "Budget atteint, mais votre d\u00E9fi est l\u00E0 pour vous aider. Gardez le cap !" : "Pour ne pas impacter vos autres besoins, essayez de freiner vos d\u00E9penses en " + catName + " jusqu'\u00E0 la fin du mois.",
+                        hasActiveDefi ? "ai.rec.budget_reached_with_defi_explanation" : "ai.rec.budget_reached_explanation",
                         !hasActiveDefi,
-                        catName
+                        catName,
+                        budgetParams
                     ));
                 } else if (spent.compareTo(limit.multiply(new BigDecimal("0.8"))) >= 0) {
                     recommendations.add(new AiRecommendation(
-                        "Attention au Budget " + catName,
-                        "Vous avez d\u00E9j\u00E0 consomm\u00E9 80% de votre budget.",
+                        "ai.rec.budget_warning_title",
+                        "ai.rec.budget_warning_message",
                         "warning",
                         catName,
-                        "Il vous reste encore quelques jours avant la fin du mois. Soyez vigilant pour rester dans le vert !",
+                        "ai.rec.budget_warning_explanation",
                         false,
-                        null
+                        null,
+                        budgetParams
                     ));
                 }
             });
@@ -118,7 +125,7 @@ public class AiRecommendationService {
             checkCategoryAdvice(user, totalDepenses, stats, activeDefis, recommendations);
             checkForecastAdvice(user, recommendations);
             checkSalaryAllocation(user, recommendations); // Le Saviez-Vous ?
-            checkChallengeIncentive(user, activeDefis, stats, recommendations); // Pr\u00EAt pour un D\u00E9fi ?
+            checkChallengeIncentive(user, activeDefis, stats, recommendations); // Prêt pour un Défi ?
         }
 
         // 4. General / Specialized Logic (Safe for all)
@@ -163,25 +170,31 @@ public class AiRecommendationService {
             BigDecimal increase = currentMonthExpenses.subtract(lastMonthExpenses)
                 .divide(lastMonthExpenses, 2, RoundingMode.HALF_UP)
                 .multiply(new BigDecimal(100));
+
+            Map<String, String> trendParams = new HashMap<>();
+            trendParams.put("percent", increase.abs().toString());
+
             if (increase.compareTo(new BigDecimal(20)) > 0) {
                 recommendations.add(new AiRecommendation(
-                    "Tendance : Hausse d'Activit\u00E9",
-                    "Hausse de " + increase + "% par rapport au mois dernier.",
-                    "info", // Info instead of warning
+                    "ai.rec.trend_up_title",
+                    "ai.rec.trend_up_message",
+                    "info",
                     "Tendances",
-                    "Une augmentation notable a \u00E9t\u00E9 d\u00E9tect\u00E9e. Si ce n'est pas un achat pr\u00E9vu, surveillez vos automatismes de d\u00E9pense.",
+                    "ai.rec.trend_up_explanation",
                     false,
-                    null
+                    null,
+                    trendParams
                 ));
             } else if (increase.compareTo(new BigDecimal("-10")) < 0) {
                  recommendations.add(new AiRecommendation(
-                    "Tendance : \u00C9conomies",
-                    "D\u00E9penses en baisse de " + increase.abs() + "% !",
+                    "ai.rec.trend_down_title",
+                    "ai.rec.trend_down_message",
                     "success",
                     "Tendances",
-                    "Bravo, vous progressez dans votre discipline financi\u00E8re. Continuez sur cette lanc\u00E9e.",
+                    "ai.rec.trend_down_explanation",
                     false,
-                    null
+                    null,
+                    trendParams
                 ));
             }
         }
@@ -189,21 +202,21 @@ public class AiRecommendationService {
 
     private void checkWelcomeAdvice(User user, List<AiRecommendation> recommendations) {
         recommendations.add(new AiRecommendation(
-            "Bienvenue sur Smart Wallet !",
-            "Pr\u00EAt \u00E0 reprendre le contr\u00F4le de vos finances ?",
+            "ai.rec.welcome_title",
+            "ai.rec.welcome_message",
             "success",
             "Onboarding",
-            "Commencez par ajouter votre premier revenu ou une d\u00E9pense r\u00E9cente. Plus vous ajoutez de donn\u00E9es, plus mes conseils seront pr\u00E9cis !",
+            "ai.rec.welcome_explanation",
             false,
             null
         ));
         
         recommendations.add(new AiRecommendation(
-            "Premi\u00E8re \u00C9tape : Le Budget",
-            "Fixez-vous des limites pour mieux \u00E9conomiser.",
+            "ai.rec.first_step_title",
+            "ai.rec.first_step_message",
             "info",
             "Education",
-            "Cr\u00E9ez un budget pour vos cat\u00E9gories principales (Alimentation, Loisirs). Je vous pr\u00E9viendrai d\u00E8s que vous approcherez de vos limites.",
+            "ai.rec.first_step_explanation",
             false,
             null
         ));
@@ -216,23 +229,28 @@ public class AiRecommendationService {
             boolean hasActiveDefi = activeDefis.stream().anyMatch(d -> d.getCategorieCible().equalsIgnoreCase(cat));
 
             if ("Alimentation".equalsIgnoreCase(cat) && amount.compareTo(new BigDecimal(500)) > 0) {
+                Map<String, String> foodParams = new HashMap<>();
+                foodParams.put("amount", amount.toString());
+                foodParams.put("currency", user.getDevise());
+
                 recommendations.add(new AiRecommendation(
-                    hasActiveDefi ? "Suivi Alimentation" : "Astuce : Le 'Meal Prep'",
-                    "Votre budget nourriture est important ce mois-ci (" + amount + ").",
+                    hasActiveDefi ? "ai.rec.food_tracking_title" : "ai.rec.meal_prep_title",
+                    "ai.rec.meal_prep_message",
                     "info",
                     "Alimentation",
-                    "Saviez-vous que pr\u00E9parer vos repas \u00E0 l'avance peut vous faire \u00E9conomiser jusqu'\u00E0 200 " + user.getDevise() + " par mois ? Essayez de cuisiner un peu plus !",
+                    "ai.rec.meal_prep_explanation",
                     !hasActiveDefi,
-                    "Alimentation"
+                    "Alimentation",
+                    foodParams
                 ));
             } else if ("Loisirs".equalsIgnoreCase(cat) && totalDep.compareTo(BigDecimal.ZERO) > 0) {
                  if (amount.compareTo(totalDep.multiply(new BigDecimal("0.3"))) > 0) {
                     recommendations.add(new AiRecommendation(
-                        "Focus : Loisirs & Plaisirs",
-                        "Les sorties et loisirs repr\u00E9sentent plus de 30% de vos d\u00E9penses.",
+                        "ai.rec.leisure_focus_title",
+                        "ai.rec.leisure_focus_message",
                         "info",
                         "Loisirs",
-                        "Se faire plaisir est essentiel, mais attention \u00E0 ce que cela ne retarde pas vos projets importants sur le long terme.",
+                        "ai.rec.leisure_focus_explanation",
                         false,
                         null
                     ));
@@ -244,14 +262,19 @@ public class AiRecommendationService {
         BigDecimal services = stats.getOrDefault("Services", BigDecimal.ZERO)
                 .add(stats.getOrDefault("Abonnements", BigDecimal.ZERO));
         if (services.compareTo(new BigDecimal(80)) > 0) {
+            Map<String, String> subParams = new HashMap<>();
+            subParams.put("amount", services.toString());
+            subParams.put("currency", user.getDevise());
+
             recommendations.add(new AiRecommendation(
-                "Audit des Abonnements",
-                "Vous avez " + services + " " + user.getDevise() + " de frais r\u00E9currents.",
+                "ai.rec.subscription_audit_title",
+                "ai.rec.subscription_audit_message",
                 "info",
                 "Optimisation",
-                "Les abonnements 'fant\u00F4mes' sont les pires ennemis de l'\u00E9pargne. Faites le tri dans vos services digitaux.",
+                "ai.rec.subscription_audit_explanation",
                 false,
-                null
+                null,
+                subParams
             ));
         }
     }
@@ -260,11 +283,11 @@ public class AiRecommendationService {
         BigDecimal currentSolde = user.getSoldeTotal() != null ? user.getSoldeTotal() : BigDecimal.ZERO;
         if (currentSolde.compareTo(new BigDecimal(500)) < 0) {
              recommendations.add(new AiRecommendation(
-                isNewUser ? "Objectif : Fonds d'Urgence" : "Priorit\u00E9 : Fonds d'Urgence",
-                isNewUser ? "La base de la s\u00E9curit\u00E9 financi\u00E8re." : "Solde de s\u00E9curit\u00E9 tr\u00E8s bas.",
+                isNewUser ? "ai.rec.emergency_fund_new_title" : "ai.rec.emergency_fund_title",
+                isNewUser ? "ai.rec.emergency_fund_new_message" : "ai.rec.emergency_fund_message",
                 isNewUser ? "info" : "danger",
                 "\u00C9pargne",
-                "Il est conseill\u00E9 de mettre de c\u00F4t\u00E9 au moins 1000 DT pour parer aux impr\u00E9vus sans toucher \u00E0 vos revenus courants.",
+                "ai.rec.emergency_fund_explanation",
                 false,
                 null
             ));
@@ -274,25 +297,29 @@ public class AiRecommendationService {
     private void checkPositiveAdvice(User user, List<AiRecommendation> recommendations) {
         BigDecimal solde = user.getSoldeTotal() != null ? user.getSoldeTotal() : BigDecimal.ZERO;
         if (solde.compareTo(new BigDecimal(3000)) > 0) {
+            Map<String, String> milestoneParams = new HashMap<>();
+            milestoneParams.put("currency", user.getDevise());
+
             recommendations.add(new AiRecommendation(
-                "Cap des 3k Franchi",
-                "Solde total d\u00E9passant les 3000 " + user.getDevise() + " !",
+                "ai.rec.milestone_3k_title",
+                "ai.rec.milestone_3k_message",
                 "success",
                 "Global",
-                "C'est un excellent r\u00E9sultat. Vous avez d\u00E9sormais une base solide pour investir ou lancer un grand projet.",
+                "ai.rec.milestone_3k_explanation",
                 false,
-                null
+                null,
+                milestoneParams
             ));
         }
     }
 
     private void checkSmartBudgetAllocation(User user, List<AiRecommendation> recommendations) {
         recommendations.add(new AiRecommendation(
-            "La R\u00E8gle d'Or 50/30/20",
-            "Comment r\u00E9partir intelligemment votre argent.",
+            "ai.rec.golden_rule_title",
+            "ai.rec.golden_rule_message",
             "success",
             "Education",
-            "La m\u00E9thode id\u00E9ale : 50% pour vos Besoins (loyer, factures), 30% pour vos Plaisirs, et 20% pour votre Futur (\u00C9pargne). Essayez de vous en rapprocher !",
+            "ai.rec.golden_rule_explanation",
             false,
             null
         ));
@@ -302,11 +329,11 @@ public class AiRecommendationService {
         LocalDateTime now = LocalDateTime.now();
         if (now.getDayOfMonth() > 20) {
              recommendations.add(new AiRecommendation(
-                "Astuce Fin de Mois",
-                "Pr\u00E9parez votre virement d'\u00E9pargne.",
+                "ai.rec.end_month_title",
+                "ai.rec.end_month_message",
                 "info",
                 "\u00C9pargne",
-                "La meilleure fa\u00E7on d'\u00E9pargner est de se payer en premier, d\u00E8s la r\u00E9ception du salaire.",
+                "ai.rec.end_month_explanation",
                 false,
                 null
             ));
@@ -316,11 +343,11 @@ public class AiRecommendationService {
     private void checkDebtAdvice(User user, List<AiRecommendation> recommendations) {
         if (!detteService.getActiveDettes(user).isEmpty()) {
             recommendations.add(new AiRecommendation(
-                "Libert\u00E9 Financi\u00E8re",
-                "Rembourser vos dettes lib\u00E8re votre futur.",
+                "ai.rec.financial_freedom_title",
+                "ai.rec.financial_freedom_message",
                 "info",
                 "Dettes",
-                "M\u00EAme de petits remboursements suppl\u00E9mentaires chaque mois peuvent r\u00E9duire drastiquement vos int\u00E9r\u00EAts.",
+                "ai.rec.financial_freedom_explanation",
                 false,
                 null
             ));
@@ -330,11 +357,11 @@ public class AiRecommendationService {
     private void checkForecastAdvice(User user, List<AiRecommendation> recommendations) {
         aiForecastService.getForecasts(user).stream().findFirst().ifPresent(f -> {
              recommendations.add(new AiRecommendation(
-                "Vision Future",
-                "Projection IA bas\u00E9e sur vos habitudes.",
+                "ai.rec.future_vision_title",
+                "ai.rec.future_vision_message",
                 "info",
-                "Pr\u00E9visions",
-                "L'IA anticipe vos flux financiers. Consultez l'onglet Pr\u00E9visions pour une vue d\u00E9taill\u00E9e.",
+                "Prévisions",
+                "ai.rec.future_vision_explanation",
                 false,
                 null
             ));
@@ -344,11 +371,11 @@ public class AiRecommendationService {
     private void checkSalaryAllocation(User user, List<AiRecommendation> recommendations) {
         // Just a constant tip to keep the screen varied
         recommendations.add(new AiRecommendation(
-            "Le Saviez-Vous ?",
-            "L'\u00E9pargne est une habitude qui se construit petit \u00E0 petit, comme un muscle que l'on entra\u00EEne.",
+            "ai.rec.did_you_know_title",
+            "ai.rec.did_you_know_message",
             "success",
             "Education",
-            "La cl\u00E9 n'est pas le montant, mais la r\u00E9gularit\u00E9. En enregistrant chaque petite transaction, vous musclez votre discipline financi\u00E8re et me permettez d'affiner mes conseils.",
+            "ai.rec.did_you_know_explanation",
             false,
             null
         ));
@@ -357,11 +384,11 @@ public class AiRecommendationService {
     private void checkChallengeIncentive(User user, List<Defi> activeDefis, Map<String, BigDecimal> stats, List<AiRecommendation> recommendations) {
         if (activeDefis.isEmpty()) {
              recommendations.add(new AiRecommendation(
-                "Pr\u00EAt pour un D\u00E9fi ?",
-                "Lancez un mini-challenge de 7 jours pour r\u00E9duire vos d\u00E9penses sans effort.",
+                "ai.rec.challenge_ready_title",
+                "ai.rec.challenge_ready_message",
                 "info",
-                "D\u00E9fis",
-                "Les d\u00E9fis vous aident \u00E0 identifier vos d\u00E9penses superflues de mani\u00E8re ludique. C'est le meilleur moyen de booster votre \u00E9pargne ce mois-ci !",
+                "Défis",
+                "ai.rec.challenge_ready_explanation",
                 true,
                 "Global"
             ));
