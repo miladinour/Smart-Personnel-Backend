@@ -58,7 +58,9 @@ public class SecurityConfig {
                                 "/api/auth/google",
                                 "/api/auth/forgot-password",
                                 "/api/auth/reset-password",
+                                "/reset-password",
                                 "/reset-password.html",
+                                "/favicon.ico",
                                 "/error",
                                 "/uploads/**")
                         .permitAll()

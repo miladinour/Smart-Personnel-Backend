@@ -32,6 +32,12 @@ public class WebConfig implements WebMvcConfigurer {
                 });
     }
 
+    @Override
+    public void addViewControllers(org.springframework.web.servlet.config.annotation.ViewControllerRegistry registry) {
+        // ✅ Permet d'accéder à /reset-password sans le .html
+        registry.addViewController("/reset-password").setViewName("forward:/reset-password.html");
+    }
+
     // ✅ Ajoute les headers CORS globalement pour toutes les ressources statiques
     @Override
     public void addCorsMappings(org.springframework.web.servlet.config.annotation.CorsRegistry registry) {
