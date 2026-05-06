@@ -94,6 +94,8 @@ public class AiCommandService {
                     resultText = resultText.substring(resultText.indexOf("{"), resultText.lastIndexOf("}") + 1);
                 }
                 
+                AiCommandResponse cloudResponse = objectMapper.readValue(resultText, AiCommandResponse.class);
+                
                 if (cloudResponse != null) {
                     System.out.println(">>> [AiCommand] Success with Gemini Cloud!");
                     if (cloudResponse.getParams() != null) {

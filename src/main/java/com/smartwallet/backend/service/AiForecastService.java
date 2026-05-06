@@ -108,7 +108,7 @@ public class AiForecastService {
             );
 
             String jsonBody = objectMapper.writeValueAsString(requestBody);
-            String model = "gemini-2.5-flash"; // Priority model per user instructions
+            String model = "gemini-1.5-flash"; // Priority model per user instructions
             
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + geminiApiKey))

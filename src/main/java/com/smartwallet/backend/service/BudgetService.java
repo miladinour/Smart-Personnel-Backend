@@ -5,7 +5,6 @@ import com.smartwallet.backend.dto.BudgetResponse;
 import com.smartwallet.backend.model.Depense;
 import com.smartwallet.backend.model.Budget;
 import com.smartwallet.backend.model.Categorie;
-import com.smartwallet.backend.model.Depense;
 import com.smartwallet.backend.model.User;
 import com.smartwallet.backend.repository.BudgetRepository;
 import com.smartwallet.backend.repository.CategorieRepository;

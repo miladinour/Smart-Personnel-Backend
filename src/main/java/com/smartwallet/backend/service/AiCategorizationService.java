@@ -250,11 +250,11 @@ public class AiCategorizationService {
 
             Map<String, Object> body = Map.of("contents", new Object[]{Map.of("parts", new Object[]{Map.of("text", prompt)})});
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" + getCleanKey()))
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + getCleanKey()))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                     .build();
-            HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 JsonNode root = objectMapper.readTree(response.body());
                 String res = root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText().trim();
@@ -266,8 +266,12 @@ public class AiCategorizationService {
                     }
                 }
                 return res;
+            } else {
+                System.err.println(">>> [Gemini] Error Status: " + response.statusCode() + " - Body: " + response.body());
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            System.err.println(">>> [Gemini] Exception: " + e.getMessage());
+        }
         return null;
     }
 

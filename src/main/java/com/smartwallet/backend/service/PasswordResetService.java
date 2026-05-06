@@ -38,7 +38,7 @@ public class PasswordResetService {
     }
 
     @Transactional
-    public void generatePasswordResetToken(String email) {
+    public void generatePasswordResetToken(String email, String currentFrontendUrl) {
         String normalizedEmail = email != null ? email.toLowerCase().trim() : null;
         Optional<User> userOptional = userRepository.findByEmail(normalizedEmail);
 
@@ -57,7 +57,11 @@ public class PasswordResetService {
             // Save token to database
             passwordResetTokenRepository.save(passwordResetToken);
 
-            emailService.sendPasswordResetEmail(user, token, frontendUrl);
+            String finalFrontendUrl = (currentFrontendUrl != null && !currentFrontendUrl.isEmpty()) 
+                                    ? currentFrontendUrl 
+                                    : frontendUrl;
+            
+            emailService.sendPasswordResetEmail(user, token, finalFrontendUrl);
         }
     }
 
