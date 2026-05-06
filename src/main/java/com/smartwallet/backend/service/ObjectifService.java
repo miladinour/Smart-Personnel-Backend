@@ -1,5 +1,4 @@
 package com.smartwallet.backend.service;
-
 import com.smartwallet.backend.model.Alerte;
 import com.smartwallet.backend.model.Objectif;
 import com.smartwallet.backend.model.User;
@@ -7,7 +6,6 @@ import com.smartwallet.backend.repository.AlerteRepository;
 import com.smartwallet.backend.repository.ObjectifRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -42,7 +40,7 @@ public class ObjectifService {
             System.err.println(">>> ObjectifService - Invalid target amount: " + objectif.getMontantCible());
             throw new RuntimeException("Le montant cible doit être supérieur à zéro");
         }
-
+        
         objectif.setUser(user);
         if (objectif.getMontantActuel() == null) {
             objectif.setMontantActuel(BigDecimal.ZERO);

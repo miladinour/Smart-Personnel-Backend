@@ -11,7 +11,7 @@ import java.util.List;
 
 @Repository
 public interface DepenseRepository extends JpaRepository<Depense, Long> {
-    List<Depense> findByUser(@org.springframework.data.repository.query.Param("user") User user);
+    List<Depense> findByUserOrderByDateDescIdDesc(@org.springframework.data.repository.query.Param("user") User user);
 
     @org.springframework.data.jpa.repository.Query("SELECT d FROM Depense d WHERE d.user = :user AND d.categorie = :categorie AND d.date >= :startDate AND d.date <= :endDate")
     List<Depense> findByUserAndCategorieAndDateBetween(

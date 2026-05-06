@@ -10,6 +10,15 @@ import com.smartwallet.backend.repository.AiRecommendationHistoryRepository;
 import com.smartwallet.backend.model.AiRecommendationHistory;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -24,6 +33,20 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 public class AiRecommendationService {
+    
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
+    
+    @Value("${gemini.api.key:}")
+    private String geminiApiKey;
+
+    @Value("${ollama.base.url:http://localhost:11434}")
+    private String ollamaBaseUrl;
+
+    @Value("${ollama.model.name:llama3}")
+    private String ollamaModelName;
 
     private final DepenseService depenseService;
     private final RevenuService revenuService;
@@ -148,6 +171,14 @@ public class AiRecommendationService {
                 aiRecommendationHistoryRepository.save(newHistory);
                 rec.setTimestamp(newHistory.getDateCreation());
             }
+        }
+
+        // 5. PERSONALIZED AI ADVICE (Local First)
+        try {
+            AiRecommendation aiRec = getAiGeneratedAdvice(user, totalDepenses, stats);
+            if (aiRec != null) recommendations.add(0, aiRec); // Put at top
+        } catch (Exception e) {
+            System.err.println(">>> [AiRecommendation] AI Advice error: " + e.getMessage());
         }
 
         return recommendations;
@@ -366,5 +397,84 @@ public class AiRecommendationService {
                 "Global"
             ));
         }
+    }
+
+    private AiRecommendation getAiGeneratedAdvice(User user, BigDecimal totalDep, Map<String, BigDecimal> stats) {
+        String context = "Dépenses totales: " + totalDep + " " + user.getDevise() + ". Catégories: " + stats.toString();
+        String prompt = "Tu es un coach financier. Analyse ces données : " + context + ".\n" +
+                        "Génère UN conseil unique et percutant.\n" +
+                        "Réponds UNIQUEMENT en JSON : {\"title\": \"Titre\", \"subtitle\": \"Résumé\", \"description\": \"Détails\"}";
+
+        // --- Step 1: Ollama ---
+        AiRecommendation local = callOllama(prompt);
+        if (local != null) return local;
+
+        // --- Step 2: Gemini ---
+        if (geminiApiKey != null && !geminiApiKey.isBlank()) {
+            return callGemini(prompt);
+        }
+        
+        return null;
+    }
+
+    private AiRecommendation callOllama(String prompt) {
+        try {
+            Map<String, Object> body = Map.of(
+                "model", ollamaModelName,
+                "prompt", prompt,
+                "stream", false,
+                "options", Map.of("temperature", 0.7, "num_predict", 256)
+            );
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(ollamaBaseUrl + "/api/generate"))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(8))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                    .build();
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JsonNode root = objectMapper.readTree(response.body());
+                String res = root.path("response").asText().trim();
+                return parseAiRec(res);
+            }
+        } catch (Exception e) {}
+        return null;
+    }
+
+    private AiRecommendation callGemini(String prompt) {
+        try {
+            Map<String, Object> body = Map.of("contents", new Object[]{Map.of("parts", new Object[]{Map.of("text", prompt)})});
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" + geminiApiKey))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(10))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                    .build();
+            HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JsonNode root = objectMapper.readTree(response.body());
+                String res = root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText().trim();
+                return parseAiRec(res);
+            }
+        } catch (Exception e) {}
+        return null;
+    }
+
+    private AiRecommendation parseAiRec(String rawJson) {
+        try {
+            if (rawJson.contains("{")) {
+                rawJson = rawJson.substring(rawJson.indexOf("{"), rawJson.lastIndexOf("}") + 1);
+            }
+            JsonNode node = objectMapper.readTree(rawJson);
+            return new AiRecommendation(
+                node.path("title").asText("Conseil Personnalis\u00E9"),
+                node.path("subtitle").asText("Analyse de vos habitudes"),
+                "info",
+                "IA Coach",
+                node.path("description").asText(),
+                false,
+                null
+            );
+        } catch (Exception e) { return null; }
     }
 }

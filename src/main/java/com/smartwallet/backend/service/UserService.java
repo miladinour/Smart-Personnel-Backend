@@ -52,7 +52,8 @@ public class UserService implements UserDetailsService {
     private String serverUrl;
 
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        User user = userRepository.findByEmailIgnoreCase(email.trim())
+        String normalizedEmail = email != null ? email.toLowerCase().trim() : null;
+        User user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("Utilisateur non trouvé avec l'email: " + email));
 
         return org.springframework.security.core.userdetails.User.builder()
@@ -64,7 +65,8 @@ public class UserService implements UserDetailsService {
     }
 
     public User findByEmail(String email) {
-        return userRepository.findByEmailIgnoreCase(email.trim())
+        String normalizedEmail = email != null ? email.toLowerCase().trim() : null;
+        return userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("Utilisateur non trouvé avec l'email: " + email));
     }
 
@@ -79,13 +81,15 @@ public class UserService implements UserDetailsService {
 
     @Transactional
     public User register(User user) throws Exception {
-        String normalizedEmail = user.getEmail().trim().toLowerCase();
-        if (userRepository.findByEmailIgnoreCase(normalizedEmail).isPresent()) {
-            throw new Exception("Cet email est deja utilise.");
+        if (user.getEmail() != null) {
+            user.setEmail(user.getEmail().toLowerCase().trim());
         }
-        user.setEmail(normalizedEmail);
+        
+        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
+            throw new Exception("L'adresse email est déjà utilisée par un autre compte.");
+        }
         user.setMotDePasse(passwordEncoder.encode(user.getMotDePasse()));
-        user.setEnabled(true); // Enabled by default for easier development/testing
+        user.setEnabled(false); // Changé à false pour forcer la vérification par email
         
         String token = UUID.randomUUID().toString();
         user.setVerificationToken(token);
@@ -156,7 +160,8 @@ public class UserService implements UserDetailsService {
     }
 
     public void changePassword(String email, String oldPassword, String newPassword) {
-        User user = findByEmail(email);
+        String normalizedEmail = email != null ? email.toLowerCase().trim() : null;
+        User user = findByEmail(normalizedEmail);
         if (!passwordEncoder.matches(oldPassword, user.getMotDePasse())) {
             throw new RuntimeException("Ancien mot de passe incorrect");
         }
@@ -198,6 +203,13 @@ public class UserService implements UserDetailsService {
     public void updateResetInterval(Long userId, String interval) {
         User user = findById(userId);
         user.setResetInterval(interval);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void setPasswordDirect(Long userId, String newPassword) {
+        User user = findById(userId);
+        user.setMotDePasse(passwordEncoder.encode(newPassword));
         userRepository.save(user);
     }
 }

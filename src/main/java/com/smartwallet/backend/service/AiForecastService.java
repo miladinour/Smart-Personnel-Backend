@@ -38,6 +38,16 @@ public class AiForecastService {
     @Value("${gemini.api.key:YOUR_API_KEY_HERE}")
     private String geminiApiKey;
 
+    @Value("${ollama.base.url:http://localhost:11434}")
+    private String ollamaBaseUrl;
+
+    @Value("${ollama.model.name:llama3}")
+    private String ollamaModelName;
+
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
+
     public List<AiForecast> getForecasts(User user) {
         System.out.println(">>> AI Forecast - Processing REAL AI for user: " + user.getEmail());
         
@@ -48,10 +58,20 @@ public class AiForecastService {
         List<Depense> historyDepenses = depenseService.getDepensesByUser(user, sixtyDaysAgo, now, null);
         List<Revenu> historyRevenus = revenuService.getRevenusByUser(user, sixtyDaysAgo, now, null);
 
-        // 2. Try LLM Forecast
+        // --- ÉTAPE 1 : TENTER OLLAMA (Local First) ---
+        System.out.println(">>> AI Forecast - Step 1: Trying Local IA (Ollama)...");
+        List<AiForecast> localResult = callOllamaForForecast(user, historyDepenses, historyRevenus);
+        if (localResult != null && !localResult.isEmpty()) {
+            System.out.println(">>> AI Forecast - Success with Local IA!");
+            return localResult;
+        }
+
+        // --- ÉTAPE 2 : TENTER GEMINI (Fallback Cloud) ---
         if (geminiApiKey != null && geminiApiKey.length() > 10) {
+            System.out.println(">>> AI Forecast - Step 2: Local IA failed, falling back to Gemini Cloud...");
             List<AiForecast> llmResult = callGeminiForForecast(user, historyDepenses, historyRevenus);
             if (llmResult != null && !llmResult.isEmpty()) {
+                System.out.println(">>> AI Forecast - Success with Gemini Cloud!");
                 return llmResult;
             }
         }
@@ -157,5 +177,45 @@ public class AiForecastService {
             ));
         }
         return forecasts;
+    }
+
+    private List<AiForecast> callOllamaForForecast(User user, List<Depense> depenses, List<Revenu> revenus) {
+        try {
+            String context = formatHistoryContext(depenses, revenus);
+            String prompt = "Tu es un expert financier. Voici l'historique sur 60 jours :\n" +
+                    context + "\n" +
+                    "Génère une prévision JSON pour les 3 PROCHAINS MOIS.\n" +
+                    "Format : [ {\"month\": \"Nom\", \"predictedIncome\": 0, \"predictedExpenses\": 0, \"optimisticExpenses\": 0, \"pessimisticExpenses\": 0, \"confidence\": 0.8, \"insights\": []} ]";
+
+            Map<String, Object> body = Map.of(
+                "model",  ollamaModelName,
+                "prompt", prompt,
+                "stream", false,
+                "options", Map.of("temperature", 0.1, "num_predict", 1024)
+            );
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(ollamaBaseUrl + "/api/generate"))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(8))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                    .build();
+
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() == 200) {
+                JsonNode root = objectMapper.readTree(response.body());
+                String resText = root.path("response").asText().trim();
+                
+                if (resText.contains("[")) {
+                    resText = resText.substring(resText.indexOf("["), resText.lastIndexOf("]") + 1);
+                }
+                
+                return objectMapper.readValue(resText, new TypeReference<List<AiForecast>>() {});
+            }
+        } catch (Exception e) {
+            System.err.println(">>> [Ollama] Forecast failed: " + e.getMessage());
+        }
+        return null;
     }
 }

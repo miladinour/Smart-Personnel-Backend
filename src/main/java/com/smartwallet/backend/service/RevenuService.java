@@ -21,7 +21,7 @@ public class RevenuService {
     private final AiCategorizationService aiCategorizationService;
 
     public List<Revenu> getRevenusByUser(User user, LocalDateTime start, LocalDateTime end, Long categoryId) {
-        return revenuRepository.findByUser(user).stream()
+        return revenuRepository.findByUserOrderByDateDescIdDesc(user).stream()
                 .filter(r -> r.getDate() != null)
                 .filter(r -> (start == null || !r.getDate().isBefore(start)))
                 .filter(r -> (end == null || !r.getDate().isAfter(end)))

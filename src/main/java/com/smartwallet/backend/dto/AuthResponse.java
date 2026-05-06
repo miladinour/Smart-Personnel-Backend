@@ -12,4 +12,14 @@ public class AuthResponse {
     private Long id;
     private String email;
     private String role;
+    private String nom;
+    private String prenom;
+
+    public AuthResponse(String token, Long id, String email, String role) {
+        this.token = token;
+        this.id = id;
+        this.email = email;
+        this.role = role;
+    }
 }
+
