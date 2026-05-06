@@ -87,14 +87,12 @@ public class AiCategorizationService {
             return similar;
         }
 
-        // --- NIVEAU 4 : IA LOCALE (Ollama) - Local ---
+        // --- NIVEAU 4 : IA LOCALE (Ollama) - Local First ---
         String catName = null;
-        if ("OLLAMA".equalsIgnoreCase(llmProvider)) {
-            System.out.println(">>> [AiCategorization] Level 4 (Ollama) attempt...");
-            catName = callOllama(text, type, allCats);
-        }
+        System.out.println(">>> [AiCategorization] Level 4 (Ollama) attempt...");
+        catName = callOllama(text, type, allCats);
 
-        // --- NIVEAU 5 : IA CLOUD (Gemini) - Fallback si Ollama échoue ou est désactivé ---
+        // --- NIVEAU 5 : IA CLOUD (Gemini) - Fallback Cloud ---
         if ((catName == null || "Autre".equalsIgnoreCase(catName)) && geminiApiKey != null && !geminiApiKey.isBlank()) {
             System.out.println(">>> [AiCategorization] Level 5 (Gemini Fallback) attempt...");
             catName = callGemini(text, type, allCats);
@@ -110,35 +108,41 @@ public class AiCategorizationService {
     }
 
     private Categorie checkKeywords(String desc, String type, User user) {
-        if (matches(desc, "cadeau", "fleur", "bouquet", "anniversaire", "fête", "don", "mariage", "naissance", "fleurs", "maman", "mama")) {
+        String d = desc.toLowerCase().trim();
+        
+        // --- PRIORITÉ 1 : MATCH EXACT AVEC LES NOMS DE CATÉGORIES DE L'USER ---
+        List<Categorie> userCats = categorieRepository.findByUserOrUserIsNull(user);
+        for (Categorie c : userCats) {
+            if (c.getNom().toLowerCase().trim().equals(d)) return c;
+        }
+
+        // --- PRIORITÉ 2 : MOTS-CLÉS SPÉCIFIQUES ---
+        if (matches(d, "cadeau", "cadeaux", "fleur", "bouquet", "anniversaire", "fête", "don", "mariage", "naissance", "fleurs", "maman", "mama", "surprise", "kdo")) {
             return findOrCreateCategory("Cadeau", user, "DEPENSE");
         }
-        if (matches(desc, "monoprix", "carrefour", "mg", "restau", "manger", "viande", "boulangerie", "lait", "pain", "pizza", "café", "alimentation", "épicerie", "fruits", "légumes", "kfc", "mac", "food", "lidl", "supermarché", "monoprix")) {
+        if (matches(d, "monoprix", "carrefour", "mg", "restau", "manger", "viande", "boulangerie", "lait", "pain", "pizza", "café", "alimentation", "épicerie", "fruits", "légumes", "kfc", "mac", "food", "lidl", "supermarché", "resto", "diner", "déjeuner", "snack", "sandwich", "gâteau", "gateau", "pâtisserie", "chocolat", "eau mineral", "oeufs", "poulet")) {
             return findOrCreateCategory("Alimentation", user, "DEPENSE");
         }
-        if (matches(desc, "taxi", "bolt", "essence", "carburant", "gasoil", "sans plomb", "95", "98", "diesel", "parking", "peage", "bus", "train", "transport", "voiture")) {
+        if (matches(d, "taxi", "bolt", "indriver", "essence", "carburant", "gasoil", "sans plomb", "95", "98", "diesel", "parking", "peage", "bus", "train", "transport", "voiture", "pneu", "lavage", "mécanique", "vidange", "freins", "assurance voiture", "vignette")) {
             return findOrCreateCategory("Transport", user, "DEPENSE");
         }
-        if (matches(desc, "chaussure", "habit", "vêtement", "shopping", "pull", "chemise", "boutique", "mode", "basket", "paire", "sneakers", "talon", "marque")) {
+        if (matches(d, "chaussure", "habit", "vêtement", "shopping", "pull", "chemise", "boutique", "mode", "basket", "paire", "sneakers", "talon", "marque", "sac", "chapeau", "lunettes", "bijou", "montre", "veste", "jeans", "parapluie", "sac à dos", "valise", "manteau", "costume", "robe", "jupe", "t-shirt", "basket")) {
             return findOrCreateCategory("Shopping", user, "DEPENSE");
         }
-        if (matches(desc, "pharma", "médicament", "dentiste", "santé", "hôpital", "soin", "cardiologue", "ophtalmo", "clinique", "médecin", "docteur", "analyse")) {
+        if (matches(d, "pharma", "médicament", "dentiste", "santé", "hôpital", "soin", "cardiologue", "ophtalmo", "clinique", "médecin", "docteur", "analyse", "dent", "vue", "lunette", "visite medicale", "consultation")) {
             return findOrCreateCategory("Santé", user, "DEPENSE");
         }
-        if (matches(desc, "steg", "sonede", "loyer", "internet", "telecom", "ooredoo", "orange", "topnet", "électricité", "facture", "eau", "steg", "gaz", "menuiserie", "bricolage", "meuble", "réparation")) {
+        if (matches(d, "steg", "sonede", "loyer", "internet", "telecom", "ooredoo", "orange", "topnet", "électricité", "facture", "eau", "gaz", "meuble", "réparation", "peinture", "ampoule", "loyer", "syndic", "climatiseur", "frigo")) {
             return findOrCreateCategory("Logement", user, "DEPENSE");
         }
-        if (matches(desc, "cinéma", "netflix", "spotify", "cadeau", "sport", "salle", "club", "vacances", "voyage", "abonnement", "loisirs", "disney", "prime")) {
+        if (matches(d, "cinéma", "netflix", "spotify", "sport", "salle", "club", "vacances", "voyage", "abonnement", "loisirs", "disney", "prime", "jeu", "gaming", "ps5", "xbox", "match", "foot", "café", "sortie")) {
             return findOrCreateCategory("Loisirs", user, "DEPENSE");
         }
-        if (matches(desc, "coiffeur", "barbier", "beauté", "cosmétique", "soin", "esthétique")) {
+        if (matches(d, "coiffeur", "barbier", "beauté", "cosmétique", "soin", "esthétique", "maquillage", "parfum", "ongles", "dentifrice", "brosse à dents", "douche", "savon", "shampoing", "epilation", "coiffure")) {
             return findOrCreateCategory("Beauté", user, "DEPENSE");
         }
-        if (matches(desc, "croquettes", "chat", "chien", "vétérinaire", "animalerie")) {
-            return findOrCreateCategory("Animaux", user, "DEPENSE");
-        }
-        if (matches(desc, "amende", "radar", "pénalité", "pv")) {
-            return findOrCreateCategory("Amende", user, "DEPENSE");
+        if (matches(d, "salaire", "virement", "prime", "bonus", "gain", "revenu", "reçu", "argent", "remboursement")) {
+            return findOrCreateCategory("Revenu", user, "REVENU");
         }
         return null;
     }
@@ -180,17 +184,18 @@ public class AiCategorizationService {
             System.out.println(">>> [Ollama] Pro mode - Analyzing '" + text + "'");
             
             // Format de prompt "Pédagogique" pour Phi-3
-            String prompt = "Tu es un assistant financier. Classe cette dépense : '" + text + "'.\n" +
-                           "Options : " + cats + ", Autre\n\n" +
-                           "RÈGLES :\n" +
-                           "1. Choisis la catégorie la plus LOGIQUE.\n" +
-                           "2. Si le texte est du charabia ou n'a aucun sens comme 'truc', 'bidule' ou 'azerty', réponds UNIQUEMENT 'Autre'.\n" +
-                           "3. Réponds par UN SEUL MOT.\n\n" +
-                           "Réponse :";
+            String prompt = "Tu es un expert en classification budgétaire. Ta mission est de classer chaque dépense dans la catégorie la plus logique de la liste.\n" +
+                           "LISTE DES CATÉGORIES : " + cats + "\n\n" +
+                           "RÈGLES CRITIQUES :\n" +
+                           "1. Ne réponds JAMAIS 'Autre' si le mot a un sens (ex: 'veste' -> Shopping, 'burger' -> Alimentation).\n" +
+                           "2. Si le mot n'est pas dans la liste, choisis la catégorie parente la plus proche.\n" +
+                           "3. Réponds uniquement par UN SEUL MOT (le nom de la catégorie).\n\n" +
+                           "MOT À CLASSER : '" + text + "'\n" +
+                           "RÉPONSE :";
 
             Map<String, Object> options = Map.of(
                 "temperature", 0.0,
-                "num_predict", 8,      
+                "num_predict", 32,      
                 "num_ctx",    1024,
                 "top_k",      1
             );
@@ -205,7 +210,7 @@ public class AiCategorizationService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(ollamaBaseUrl + "/api/generate"))
                     .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(45)) // Timeout augmenté à 45s par sécurité
+                    .timeout(Duration.ofSeconds(5)) // Timeout réduit pour une réponse rapide
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                     .build();
 
@@ -215,21 +220,20 @@ public class AiCategorizationService {
             if (response.statusCode() == 200) {
                 JsonNode root = objectMapper.readTree(response.body());
                 String res = root.path("response").asText().trim();
-                System.out.println(">>> [Ollama] Raw Response: " + res);
+                System.out.println(">>> [Ollama] AI Response: " + res);
                 
-                // Nettoyage agressif : on prend le premier mot
-                if (res.contains(" ")) res = res.split(" ")[0];
-                if (res.contains("\n")) res = res.split("\n")[0];
-                res = res.replaceAll("[^a-zA-Z\u00C0-\u024F]", "").trim();
-                
-                // LOGIQUE PRO : Avant de créer une nouvelle catégorie, on cherche si un match existe déjà 
-                // même si l'IA a fait une petite faute de frappe ou a répondu différemment.
+                // On cherche si la réponse de l'IA contient ou ressemble à une de nos catégories
                 for (Categorie cat : existing) {
-                    if (diceCoefficient(res.toLowerCase(), cat.getNom().toLowerCase()) > 0.7) {
+                    String catNom = cat.getNom().toLowerCase();
+                    String aiRes = res.toLowerCase();
+                    if (aiRes.contains(catNom) || diceCoefficient(aiRes, catNom) > 0.6) {
                         return cat.getNom();
                     }
                 }
                 
+                // Si pas de match trouvé, on nettoie le premier mot
+                if (res.contains(" ")) res = res.split(" ")[0];
+                res = res.replaceAll("[^a-zA-Z\u00C0-\u024F]", "").trim();
                 return res;
             }
         } catch (Exception e) {
@@ -240,21 +244,34 @@ public class AiCategorizationService {
     private String callGemini(String text, String type, List<Categorie> existing) {
         try {
             String existingList = String.join(", ", existing.stream().map(Categorie::getNom).toList());
-            String prompt = "Catégorise cette transaction (" + type + ") : \"" + text + "\".\n" +
-                           "RÈGLES : Réponds uniquement le nom de la catégorie choisie parmi [" + existingList + "] ou une nouvelle catégorie courte.";
+            String prompt = "Tu es un assistant financier expert. Catégorise cette transaction : \"" + text + "\".\n" +
+                           "CATÉGORIES POSSIBLES : [" + existingList + "].\n" +
+                           "CONSIGNE : Choisis la catégorie la plus pertinente. Interdiction de répondre 'Autre' sauf si le texte est totalement incompréhensible. Réponds uniquement le nom de la catégorie.";
 
             Map<String, Object> body = Map.of("contents", new Object[]{Map.of("parts", new Object[]{Map.of("text", prompt)})});
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" + getCleanKey()))
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + getCleanKey()))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                     .build();
-            HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 JsonNode root = objectMapper.readTree(response.body());
-                return root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText().trim();
+                String res = root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText().trim();
+                System.out.println(">>> [Gemini] AI Response: " + res);
+                
+                for (Categorie cat : existing) {
+                    if (res.toLowerCase().contains(cat.getNom().toLowerCase())) {
+                        return cat.getNom();
+                    }
+                }
+                return res;
+            } else {
+                System.err.println(">>> [Gemini] Error Status: " + response.statusCode() + " - Body: " + response.body());
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            System.err.println(">>> [Gemini] Exception: " + e.getMessage());
+        }
         return null;
     }
 

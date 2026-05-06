@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,6 +33,12 @@ public class AiCommandService {
     @Value("${gemini.api.key:}")
     private String geminiApiKey;
 
+    @Value("${ollama.base.url:http://localhost:11434}")
+    private String ollamaBaseUrl;
+
+    @Value("${ollama.model.name:llama3}")
+    private String ollamaModelName;
+
     public AiCommandService(AiCategorizationService aiCategorizationService) {
         this.aiCategorizationService = aiCategorizationService;
     }
@@ -39,13 +46,33 @@ public class AiCommandService {
     public AiCommandResponse processCommand(String command, String devise, User user) {
         System.out.println(">>> [AiCommand] processing: '" + command + "'");
         String today = LocalDate.now().format(DateTimeFormatter.ISO_DATE);
-        
-        try {
-            String prompt = "Tu es un assistant financier. Aujourd'hui est le : " + today + ".\n" +
-                          "Analyse : \"" + command + "\".\n" +
-                          "Réponds UNIQUEMENT en JSON :\n" +
-                          "{\"action\": \"ADD_TRANSACTION\", \"params\": {\"amount\": 15.0, \"description\": \"Libellé\", \"type\": \"DEPENSE\", \"category\": \"Alimentation\", \"date\": \"yyyy-MM-dd\"}, \"responseMessage\": \"Ok !\"}";
+        String prompt = "Tu es un assistant financier expert. Analyse cette commande et extrais les infos en JSON.\n" +
+                      "RÈGLE CRUCIALE : La 'description' doit être uniquement le NOM de l'objet ou service (ex: 'Pizza', 'Essence', 'Loyer'). Pas de phrases.\n" +
+                      "Aujourd'hui : " + today + "\n" +
+                      "Commande : \"" + command + "\"\n" +
+                      "Format :\n" +
+                      "{\"action\": \"ADD_TRANSACTION\", \"params\": {\"amount\": 15.0, \"description\": \"Pizza\", \"type\": \"DEPENSE\", \"category\": \"Alimentation\", \"date\": \"yyyy-MM-dd\"}, \"responseMessage\": \"Ok !\"}";
 
+        // --- ÉTAPE 1 : TENTER OLLAMA (Local First) ---
+        System.out.println(">>> [AiCommand] Step 1: Trying Local IA (Ollama)...");
+        AiCommandResponse localResponse = callOllama(prompt);
+        if (localResponse != null) {
+            System.out.println(">>> [AiCommand] Success with Local IA!");
+            // Post-traitement de la catégorie si nécessaire
+            if (localResponse.getParams() != null) {
+                String desc = localResponse.getParams().get("description") != null ? localResponse.getParams().get("description").toString() : command;
+                localResponse.getParams().put("description", cleanDescription(desc, command));
+                
+                String type = localResponse.getParams().get("type") != null ? localResponse.getParams().get("type").toString() : "DEPENSE";
+                Categorie finalCat = aiCategorizationService.categorize(localResponse.getParams().get("description").toString(), type, user);
+                localResponse.getParams().put("category", finalCat.getNom());
+            }
+            return localResponse;
+        }
+
+        // --- ÉTAPE 2 : TENTER GEMINI (Fallback Cloud) ---
+        System.out.println(">>> [AiCommand] Step 2: Local IA failed or too slow, falling back to Gemini Cloud...");
+        try {
             Map<String, Object> body = Map.of(
                 "contents", new Object[]{Map.of("parts", new Object[]{Map.of("text", prompt)})}
             );
@@ -53,7 +80,7 @@ public class AiCommandService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" + getCleanKey()))
                     .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(15))
+                    .timeout(Duration.ofSeconds(8))
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                     .build();
 
@@ -67,9 +94,24 @@ public class AiCommandService {
                     resultText = resultText.substring(resultText.indexOf("{"), resultText.lastIndexOf("}") + 1);
                 }
                 
-                return objectMapper.readValue(resultText, AiCommandResponse.class);
+                AiCommandResponse cloudResponse = objectMapper.readValue(resultText, AiCommandResponse.class);
+                
+                if (cloudResponse != null) {
+                    System.out.println(">>> [AiCommand] Success with Gemini Cloud!");
+                    if (cloudResponse.getParams() != null) {
+                        String desc = cloudResponse.getParams().get("description") != null ? cloudResponse.getParams().get("description").toString() : command;
+                        cloudResponse.getParams().put("description", cleanDescription(desc, command));
+                        
+                        String type = cloudResponse.getParams().get("type") != null ? cloudResponse.getParams().get("type").toString() : "DEPENSE";
+                        Categorie finalCat = aiCategorizationService.categorize(cloudResponse.getParams().get("description").toString(), type, user);
+                        cloudResponse.getParams().put("category", finalCat.getNom());
+                    }
+                    return cloudResponse;
+                }
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            System.err.println(">>> [AiCommand] Gemini failed: " + e.getMessage());
+        }
 
         if (command.toUpperCase().contains("ANALYSE DE FACTURE")) {
             return processOcrFallback(command, user);
@@ -162,17 +204,14 @@ public class AiCommandService {
                 type = "REVENU";
             }
             
-            // 4. Nettoyage de la description (on enlève aussi précisément la date trouvée)
-            String description = cmdLower
-                    .replace(amountStr, "")
-                    .replace(dateStringFound, "") // On enlève la date détectée du titre !
-                    .replaceAll("(?i)\\b(j'ai|dépensé|payé|ajouté|achat|un|le|la|du|de|dt|dinar|dinars|reçu|salaire|revenu|soir|matin|le)\\b", "")
-                    .replaceAll("(?i)\\b(au|à la|à l'|à)\\b", "")
-                    .replaceAll("\\s+", " ")
-                    .trim();
+            // 4. Nettoyage de la description
+            String description = cleanDescription(null, cmdLower);
             
             if (description.isEmpty()) description = (type.equals("REVENU") ? "Revenu" : "Dépense");
-            else description = Character.toUpperCase(description.charAt(0)) + description.substring(1);
+            else {
+                // On met la première lettre en majuscule
+                description = Character.toUpperCase(description.charAt(0)) + description.substring(1);
+            }
 
             System.out.println(">>> [DEBUG] Final description sent to AI: '" + description + "'");
             Categorie cat = aiCategorizationService.categorize(description, type, user);
@@ -196,5 +235,52 @@ public class AiCommandService {
         res.setAction("TALK");
         res.setResponseMessage("Je vous écoute...");
         return res;
+    }
+
+    private AiCommandResponse callOllama(String prompt) {
+        try {
+            Map<String, Object> body = Map.of(
+                "model",  ollamaModelName,
+                "prompt", prompt,
+                "stream", false,
+                "options", Map.of("temperature", 0.1, "num_predict", 256)
+            );
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(ollamaBaseUrl + "/api/generate"))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(8)) // Timeout court pour Ollama
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                    .build();
+
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() == 200) {
+                JsonNode root = objectMapper.readTree(response.body());
+                String resText = root.path("response").asText().trim();
+                
+                // Nettoyage JSON si l'IA ajoute du texte autour
+                if (resText.contains("{")) {
+                    resText = resText.substring(resText.indexOf("{"), resText.lastIndexOf("}") + 1);
+                }
+                
+                return objectMapper.readValue(resText, AiCommandResponse.class);
+            }
+        } catch (Exception e) {
+            System.err.println(">>> [Ollama] Command failed: " + e.getMessage());
+        }
+        return null;
+    }
+    private String cleanDescription(String aiDesc, String originalCommand) {
+        String toClean = (aiDesc != null && aiDesc.length() > 1 && !aiDesc.matches("\\d+")) ? aiDesc : originalCommand;
+        
+        String cleaned = toClean.toLowerCase()
+                .replaceAll("\\d+([.,]\\d+)?", "") // Enlever les chiffres
+                .replaceAll("(?i)\\b(j'ai|dépensé|payé|ajouté|achat|acheté|pris|un|une|le|la|les|du|de|des|dt|dinar|dinars|reçu|salaire|revenu|soir|matin|hier|aujourd'hui|demain|pour|au|à la|à l'|à|h|tnd|dt|eur|usd|donne-moi|ajoute|met|mets|place)\\b", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        
+        if (cleaned.isEmpty()) return (originalCommand.contains("salaire") ? "Revenu" : "Dépense");
+        return Character.toUpperCase(cleaned.charAt(0)) + cleaned.substring(1);
     }
 }

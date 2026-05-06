@@ -8,6 +8,7 @@ import java.util.List;
 
 @Repository
 public interface RevenuRepository extends JpaRepository<Revenu, Long> {
+    List<Revenu> findByUserOrderByDateDescIdDesc(@org.springframework.data.repository.query.Param("user") User user);
     List<Revenu> findByUser(@org.springframework.data.repository.query.Param("user") User user);
 
     @org.springframework.data.jpa.repository.Query("SELECT r FROM Revenu r WHERE r.user = :user AND r.date >= :startDate AND r.date <= :endDate")

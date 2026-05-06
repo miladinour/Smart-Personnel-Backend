@@ -34,7 +34,7 @@ public class DepenseService {
     private final DefiService defiService;
 
     public List<Depense> getDepensesByUser(User user, LocalDateTime start, LocalDateTime end, Long categoryId) {
-        return depenseRepository.findByUser(user).stream()
+        return depenseRepository.findByUserOrderByDateDescIdDesc(user).stream()
                 .filter(d -> d.getDate() != null)
                 .filter(d -> (start == null || !d.getDate().isBefore(start)))
                 .filter(d -> (end == null || !d.getDate().isAfter(end)))
