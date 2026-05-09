@@ -1,4 +1,4 @@
-package com.smartwallet.backend.service;
+﻿package com.smartwallet.backend.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.regex.Pattern;
+import java.text.Normalizer;
 
 @Service
 public class AiCategorizationService {
@@ -51,17 +52,25 @@ public class AiCategorizationService {
     public Categorie categorize(String text, String type, User user) {
         if (text == null || text.isBlank()) return findOrCreateCategory("Autre", user, type);
         
-        System.out.println(">>> [AiCategorization] Processing cascade for: " + text);
+        System.out.println(">>> [AiCategorization] Processing cascade for description: '" + text + "' (Type: " + type + ")");
+        
+        // Log hexadecimal to detect invisible characters
+        StringBuilder hexStr = new StringBuilder();
+        for (char ch : text.toCharArray()) {
+            hexStr.append(String.format("%04x ", (int) ch));
+        }
+        System.out.println(">>> [AiCategorization] Hex of description: " + hexStr.toString().trim());
+
         String desc = text.toLowerCase().trim();
 
         // --- NIVEAU 1 : MOTS-CLÉS (Instantané) ---
+        System.out.println(">>> [AiCategorization] Level 1: Checking Keywords...");
         Categorie fromKeywords = checkKeywords(desc, type, user);
         if (fromKeywords != null) {
-            System.out.println(">>> [DEBUG] Level 1 MATCH FOUND: " + fromKeywords.getNom() + " (ID: " + fromKeywords.getId() + ")");
+            System.out.println(">>> [AiCategorization] Level 1 (Keywords) MATCHED: " + fromKeywords.getNom());
             return fromKeywords;
-        } else {
-            System.out.println(">>> [DEBUG] Level 1 NO MATCH for: " + desc);
         }
+        System.out.println(">>> [AiCategorization] Level 1 (Keywords) NO MATCH.");
 
         // --- NIVEAU 2 : MÉMOIRE / HISTORIQUE EXACT (Local) ---
         try {
@@ -87,62 +96,78 @@ public class AiCategorizationService {
             return similar;
         }
 
-        // --- NIVEAU 4 : IA LOCALE (Ollama) - Local First ---
-        String catName = null;
-        System.out.println(">>> [AiCategorization] Level 4 (Ollama) attempt...");
-        catName = callOllama(text, type, allCats);
-
-        // --- NIVEAU 5 : IA CLOUD (Gemini) - Fallback Cloud ---
-        if ((catName == null || "Autre".equalsIgnoreCase(catName)) && geminiApiKey != null && !geminiApiKey.isBlank()) {
-            System.out.println(">>> [AiCategorization] Level 5 (Gemini Fallback) attempt...");
-            catName = callGemini(text, type, allCats);
+        // NIVEAU 4 : Ollama (Local)
+        System.out.println(">>> [AiCategorization] Level 4: Attempting Ollama (Model: " + ollamaModelName + ")...");
+        String ollamaRes = callOllama(desc, type, allCats);
+        if (ollamaRes != null && !ollamaRes.isBlank()) {
+            System.out.println(">>> [AiCategorization] Level 4 (Ollama) MATCHED: '" + ollamaRes + "'");
+            return findOrCreateCategory(ollamaRes, user, type);
         }
+        System.out.println(">>> [AiCategorization] Level 4 (Ollama) FAILED or returned null.");
 
-        if (catName != null && !catName.isBlank() && !"Autre".equalsIgnoreCase(catName)) {
-            System.out.println(">>> [AiCategorization] AI Success: " + catName);
-            return findOrCreateCategory(catName, user, type);
+        // NIVEAU 5 : Gemini (Cloud Fallback)
+        System.out.println(">>> [AiCategorization] Level 5: Attempting Gemini Fallback...");
+        String geminiRes = callGemini(desc, type, allCats);
+        if (geminiRes != null && !geminiRes.isBlank()) {
+            System.out.println(">>> [AiCategorization] Level 5 (Gemini) MATCHED: '" + geminiRes + "'");
+            return findOrCreateCategory(geminiRes, user, type);
         }
+        System.out.println(">>> [AiCategorization] Level 5 (Gemini) FAILED.");
 
-        System.out.println(">>> [AiCategorization] All levels failed. Defaulting to 'Autre'");
+        // Si rien n'a marché, on met "Autre"
+        System.out.println(">>> [AiCategorization] All levels failed. Defaulting to 'Autre'.");
         return findOrCreateCategory("Autre", user, type);
     }
 
     private Categorie checkKeywords(String desc, String type, User user) {
-        String d = desc.toLowerCase().trim();
+        String d = normalize(desc);
+        System.out.println(">>> [AiCategorization] DEBUG: checkKeywords normalized input d = '" + d + "'");
         
         // --- PRIORITÉ 1 : MATCH EXACT AVEC LES NOMS DE CATÉGORIES DE L'USER ---
         List<Categorie> userCats = categorieRepository.findByUserOrUserIsNull(user);
+        
+        System.out.println(">>> [AiCategorization] Loaded " + userCats.size() + " categories for matching.");
+
         for (Categorie c : userCats) {
-            if (c.getNom().toLowerCase().trim().equals(d)) return c;
+            if (normalize(c.getNom()).equals(d)) {
+                System.out.println(">>> [AiCategorization] Priority 1 (Exact Match) found: " + c.getNom());
+                return c;
+            }
         }
 
         // --- PRIORITÉ 2 : MOTS-CLÉS SPÉCIFIQUES ---
         if (matches(d, "cadeau", "cadeaux", "fleur", "bouquet", "anniversaire", "fête", "don", "mariage", "naissance", "fleurs", "maman", "mama", "surprise", "kdo")) {
-            return findOrCreateCategory("Cadeau", user, "DEPENSE");
+            return findOrCreateCategory("Cadeau", user, type);
         }
-        if (matches(d, "monoprix", "carrefour", "mg", "restau", "manger", "viande", "boulangerie", "lait", "pain", "pizza", "café", "alimentation", "épicerie", "fruits", "légumes", "kfc", "mac", "food", "lidl", "supermarché", "resto", "diner", "déjeuner", "snack", "sandwich", "gâteau", "gateau", "pâtisserie", "chocolat", "eau mineral", "oeufs", "poulet")) {
-            return findOrCreateCategory("Alimentation", user, "DEPENSE");
+        if (matches(d, "monoprix", "carrefour", "mg", "restau", "manger", "viande", "boulangerie", "lait", "pain", "pizza", "café", "alimentation", "épicerie", "fruits", "légumes", "kfc", "mac", "food", "lidl", "supermarché", "resto", "diner", "déjeuner", "snack", "sandwich", "gâteau", "gateau", "pâtisserie", "chocolat", "eau mineral", "oeufs", "poulet", "bouteille", "boisson", "jus", "yaourt", "fromage", "beurre", "sucre", "farine", "huile", "sel", "epice", "mouton", "agneau", "poulet", "viande", "boeuf", "poisson", "merguez", "achat alimentaire", "marche", "epicerie")) {
+            return findOrCreateCategory("Alimentation", user, type);
         }
         if (matches(d, "taxi", "bolt", "indriver", "essence", "carburant", "gasoil", "sans plomb", "95", "98", "diesel", "parking", "peage", "bus", "train", "transport", "voiture", "pneu", "lavage", "mécanique", "vidange", "freins", "assurance voiture", "vignette")) {
-            return findOrCreateCategory("Transport", user, "DEPENSE");
+            return findOrCreateCategory("Transport", user, type);
         }
         if (matches(d, "chaussure", "habit", "vêtement", "shopping", "pull", "chemise", "boutique", "mode", "basket", "paire", "sneakers", "talon", "marque", "sac", "chapeau", "lunettes", "bijou", "montre", "veste", "jeans", "parapluie", "sac à dos", "valise", "manteau", "costume", "robe", "jupe", "t-shirt", "basket")) {
-            return findOrCreateCategory("Shopping", user, "DEPENSE");
+            return findOrCreateCategory("Shopping", user, type);
         }
         if (matches(d, "pharma", "médicament", "dentiste", "santé", "hôpital", "soin", "cardiologue", "ophtalmo", "clinique", "médecin", "docteur", "analyse", "dent", "vue", "lunette", "visite medicale", "consultation")) {
-            return findOrCreateCategory("Santé", user, "DEPENSE");
+            return findOrCreateCategory("Santé", user, type);
         }
-        if (matches(d, "steg", "sonede", "loyer", "internet", "telecom", "ooredoo", "orange", "topnet", "électricité", "facture", "eau", "gaz", "meuble", "réparation", "peinture", "ampoule", "loyer", "syndic", "climatiseur", "frigo")) {
-            return findOrCreateCategory("Logement", user, "DEPENSE");
+        if (matches(d, "steg", "sonede", "loyer", "internet", "telecom", "ooredoo", "orange", "topnet", "électricité", "facture eau", "facture gaz", "facture electricite", "gaz", "meuble", "réparation", "peinture", "ampoule", "syndic", "climatiseur", "frigo")) {
+            return findOrCreateCategory("Logement", user, type);
         }
-        if (matches(d, "cinéma", "netflix", "spotify", "sport", "salle", "club", "vacances", "voyage", "abonnement", "loisirs", "disney", "prime", "jeu", "gaming", "ps5", "xbox", "match", "foot", "café", "sortie")) {
-            return findOrCreateCategory("Loisirs", user, "DEPENSE");
+        if (matches(d, "cinema", "netflix", "spotify", "sport", "salle", "club", "vacances", "voyage", "abonnement", "loisirs", "disney", "prime", "jeu", "gaming", "ps5", "xbox", "match", "foot", "cafe", "sortie")) {
+            return findOrCreateCategory("Loisirs", user, type);
+        }
+        if (matches(d, "livre", "livres", "roman", "bd", "manga", "librairie", "cours", "formation", "ecole", "universite", "scolarite", "crayon", "stylo", "cahier", "cartable", "calculatrice", "fourniture", "dictionnaire")) {
+            return findOrCreateCategory("Education", user, type);
         }
         if (matches(d, "coiffeur", "barbier", "beauté", "cosmétique", "soin", "esthétique", "maquillage", "parfum", "ongles", "dentifrice", "brosse à dents", "douche", "savon", "shampoing", "epilation", "coiffure")) {
-            return findOrCreateCategory("Beauté", user, "DEPENSE");
+            return findOrCreateCategory("Beauté", user, type);
         }
         if (matches(d, "salaire", "virement", "prime", "bonus", "gain", "revenu", "reçu", "argent", "remboursement")) {
-            return findOrCreateCategory("Revenu", user, "REVENU");
+            return findOrCreateCategory("Revenu", user, type);
+        }
+        if (matches(d, "telephone", "telephonique", "reglage", "reparation", "depannage", "iphone", "samsung", "xiaomi", "android", "smartphone", "ecran", "batterie", "chargeur", "plombier", "electricien", "technicien", "maintenance", "installation", "assistance")) {
+            return findOrCreateCategory("Services", user, type);
         }
         return null;
     }
@@ -210,7 +235,7 @@ public class AiCategorizationService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(ollamaBaseUrl + "/api/generate"))
                     .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(5)) // Timeout réduit pour une réponse rapide
+                    .timeout(Duration.ofSeconds(15)) // Augmenté pour laisser Ollama générer une réponse
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                     .build();
 
@@ -250,7 +275,7 @@ public class AiCategorizationService {
 
             Map<String, Object> body = Map.of("contents", new Object[]{Map.of("parts", new Object[]{Map.of("text", prompt)})});
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + getCleanKey()))
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + getCleanKey()))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                     .build();
@@ -258,44 +283,64 @@ public class AiCategorizationService {
             if (response.statusCode() == 200) {
                 JsonNode root = objectMapper.readTree(response.body());
                 String res = root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText().trim();
-                System.out.println(">>> [Gemini] AI Response: " + res);
+                System.out.println(">>> [Gemini] AI Raw Response: '" + res + "'");
                 
+                // On essaie de mapper vers une catégorie existante
                 for (Categorie cat : existing) {
-                    if (res.toLowerCase().contains(cat.getNom().toLowerCase())) {
+                    String catNom = cat.getNom().toLowerCase();
+                    if (res.toLowerCase().contains(catNom)) {
                         return cat.getNom();
                     }
                 }
+                
+                // Nettoyage si l'IA a mis une phrase
+                if (res.contains(" ")) res = res.split(" ")[0];
+                res = res.replaceAll("[^a-zA-Z\u00C0-\u024F]", "").trim();
                 return res;
             } else {
-                System.err.println(">>> [Gemini] Error Status: " + response.statusCode() + " - Body: " + response.body());
+                System.err.println(">>> [Gemini] API Error: " + response.statusCode());
+                if (response.statusCode() == 403 || response.statusCode() == 401) {
+                    System.err.println(">>> [Gemini] CRITICAL: API Key might be invalid or restricted! Body: " + response.body());
+                } else {
+                    System.err.println(">>> [Gemini] Body: " + response.body());
+                }
             }
         } catch (Exception e) {
-            System.err.println(">>> [Gemini] Exception: " + e.getMessage());
+            System.err.println(">>> [Gemini] Connection Exception: " + e.getMessage());
         }
         return null;
     }
 
+    private String normalize(String input) {
+        if (input == null) return "";
+        String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);
+        return normalized.replaceAll("\\p{M}", "").toLowerCase().trim();
+    }
+
     private boolean matches(String text, String... keywords) {
         if (text == null || text.isBlank()) return false;
-        String lowerText = text.toLowerCase().trim();
+        String lowerText = normalize(text);
 
         for (String k : keywords) {
-            String lowerK = k.toLowerCase().trim();
+            String lowerK = normalize(k);
             
             boolean matched = false;
             if (lowerK.length() <= 4) {
+                // Pour les mots courts, on veut un match exact de mot (\b)
                 if (lowerText.matches(".*\\b" + Pattern.quote(lowerK) + "\\b.*")) {
-                    if (!lowerText.equals("achat") && !lowerText.equals("le") && !lowerText.equals("un")) {
+                    // On évite de matcher des mots trop communs seuls
+                    if (!lowerText.equals("un") && !lowerText.equals("le")) {
                         matched = true;
                     }
                 }
             } else {
+                // Pour les mots plus longs, "cadeau" matchera "cadeaux" ou "cadeau d'anniv"
                 if (lowerText.contains(lowerK)) matched = true;
                 else if (diceCoefficient(lowerText, lowerK) > 0.80) matched = true;
             }
 
             if (matched) {
-                System.out.println(">>> [DEBUG] KEYWORD MATCH: '" + lowerK + "' found in '" + lowerText + "'");
+                System.out.println(">>> [AiCategorization] DEBUG: Keyword MATCH found! Keyword: '" + lowerK + "' in text: '" + lowerText + "'");
                 return true;
             }
         }

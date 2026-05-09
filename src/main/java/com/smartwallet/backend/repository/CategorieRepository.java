@@ -25,6 +25,7 @@ public interface CategorieRepository extends JpaRepository<Categorie, Long> {
 
     List<Categorie> findByUser(@org.springframework.data.repository.query.Param("user") User user);
 
+    @Query("SELECT c FROM Categorie c WHERE c.user = :user OR c.user IS NULL")
     List<Categorie> findByUserOrUserIsNull(@org.springframework.data.repository.query.Param("user") User user);
 
     List<Categorie> findByUserAndType(

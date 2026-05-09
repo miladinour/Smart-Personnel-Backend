@@ -47,12 +47,15 @@ public class DepenseService {
     }
 
     public Depense createDepense(Depense depense, User user) {
+        System.out.println(">>> DepenseService - Creating expense: " + depense.getMontant() + " for user: " + user.getId());
         depense.setUser(user);
         if (depense.getDate() == null) {
             depense.setDate(LocalDateTime.now());
         }
         resolveOrCreateCategorie(depense, user);
+        System.out.println(">>> DepenseService - Category resolved: " + (depense.getCategorie() != null ? depense.getCategorie().getNom() : "NULL"));
         Depense savedDepense = depenseRepository.save(depense);
+        System.out.println(">>> DepenseService - Expense saved with ID: " + savedDepense.getId());
         checkBudgetAndAlert(savedDepense, user);
         userService.updateSolde(user.getId(), depense.getMontant().negate());
         
@@ -114,12 +117,17 @@ public class DepenseService {
     }
 
     private void checkBudgetAndAlert(Depense depense, User user) {
-        if (depense.getCategorie() == null || depense.getCategorie().getId() == null)
+        if (depense.getCategorie() == null || depense.getCategorie().getId() == null) {
+            System.out.println(">>> DepenseService - No category for budget check");
             return;
+        }
+
+        System.out.println(">>> DepenseService - Checking budget for user: " + user.getId() + " category: " + depense.getCategorie().getId());
 
         budgetRepository
                 .findActiveBudgetForCategory(user, depense.getCategorie().getId(), depense.getDate().toLocalDate())
-                .ifPresent(budget -> {
+                .ifPresentOrElse(budget -> {
+                    System.out.println(">>> DepenseService - Active budget found: " + budget.getId());
                     LocalDateTime startDateTime = budget.getDateDebut().atStartOfDay();
                     LocalDateTime endDateTime = budget.getDateFin().atTime(java.time.LocalTime.MAX);
 
@@ -129,17 +137,22 @@ public class DepenseService {
                             .mapToDouble(d -> d.getMontant().doubleValue())
                             .sum();
 
+                    System.out.println(">>> DepenseService - Total spent for budget: " + totalSpent + " (Limit: " + budget.getMontantLimite() + ")");
+
                     double limit = budget.getMontantLimite().doubleValue();
                     double threshold80 = limit * 0.8;
 
-                    // Only create alert if one hasn't been created recently or check isn't naive
                     if (totalSpent >= limit) {
+                        System.out.println(">>> DepenseService - Budget exceeded!");
                         createAlert(user, budget, "Alerte Critique : Vous avez dépassé votre budget pour la catégorie "
                                 + budget.getCategorie().getNom() + " !");
                     } else if (totalSpent >= threshold80) {
+                        System.out.println(">>> DepenseService - 80% threshold reached");
                         createAlert(user, budget, "Attention : Vous avez atteint 80% de votre budget pour la catégorie "
                                 + budget.getCategorie().getNom() + ".");
                     }
+                }, () -> {
+                    System.out.println(">>> DepenseService - No active budget found for this category and date.");
                 });
     }
 
