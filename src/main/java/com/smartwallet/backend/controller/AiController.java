@@ -62,17 +62,59 @@ public class AiController {
 
     @GetMapping("/seasonal-alerts")
     public ResponseEntity<List<SeasonalAlert>> getSeasonalAlerts(Authentication authentication) {
-        // Mocking some seasonal alerts if no service is dedicated yet
         List<SeasonalAlert> alerts = new ArrayList<>();
+        
+        // Use keys instead of hardcoded strings for full localization
         alerts.add(new SeasonalAlert(
-            "Rentrée Scolaire", 
-            "Septembre", 
+            "seasonal.school.title", 
+            "septembre", 
             "📚", 
-            "Attention : Vos dépenses augmentent de 30% historiquement en septembre.", 
+            "seasonal.school.desc", 
             java.math.BigDecimal.valueOf(500), 
             30, 
             true
         ));
+
+        alerts.add(new SeasonalAlert(
+            "seasonal.summer.title", 
+            "juillet", 
+            "☀️", 
+            "seasonal.summer.desc", 
+            java.math.BigDecimal.valueOf(800), 
+            25, 
+            false
+        ));
+
+        alerts.add(new SeasonalAlert(
+            "seasonal.ramadan.title", 
+            "february", 
+            "🌙", 
+            "seasonal.ramadan.desc", 
+            java.math.BigDecimal.valueOf(400), 
+            20, 
+            true
+        ));
+
+        alerts.add(new SeasonalAlert(
+            "seasonal.eid_fitr.title", 
+            "march", 
+            "🍬", 
+            "seasonal.eid_fitr.desc", 
+            java.math.BigDecimal.valueOf(500), 
+            30, 
+            false
+        ));
+
+        alerts.add(new SeasonalAlert(
+            "seasonal.eid_adha.title", 
+            "may", 
+            "🐑", 
+            "seasonal.eid_adha.desc", 
+            java.math.BigDecimal.valueOf(1500), 
+            40, 
+            true
+        ));
+
         return ResponseEntity.ok(alerts);
     }
 }

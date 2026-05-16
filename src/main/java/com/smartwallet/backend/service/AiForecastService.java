@@ -163,7 +163,7 @@ public class AiForecastService {
             BigDecimal predictedIncome = dailyIncomeAvg.multiply(new BigDecimal(30));
 
             List<String> insights = new ArrayList<>();
-            insights.add("Basé sur vos moyennes récentes, nous prévoyons une stabilité de vos dépenses.");
+            insights.add("ai.forecast.stability_insight");
 
             forecasts.add(new AiForecast(
                 monthName,
